@@ -1,45 +1,50 @@
 # Agents Bot
 
-Agents Bot 是一个 Windows 多智能体开发工作台。把同一项软件需求交给 2 至 6 位 AI 成员，让它们分工写代码、交接草稿并审阅结果。例如，让 GPT 拆解需求、DeepSeek 实现功能、Gemini 编写测试。团队可以在一台电脑上工作，也可以通过 SSH 加入同一个 Linux 云房间，手机端能查看进度。
+Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当组长、DeepSeek 写功能、Gemini 写测试，看它们如何分工、交接草稿并审阅同一份项目。工作台支持 GPT、Gemini、Claude、DeepSeek、Kimi 和 GLM。一个团队可以同时使用 API Key 和已登录的本机账号。
 
-**下载 v1.2.0**　[Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.2.0/AgentsBot-v1.2.0-Windows-x64.zip) · [配套安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.2.0/AgentsBot-Android.apk) · [版本说明与源码](https://github.com/rrship/agents-bot/releases/tag/v1.2.0)
+**下载 v1.2.0**　[Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.2.0/AgentsBot-v1.2.0-Windows-x64.zip) · [安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.2.0/AgentsBot-Android.apk) · [版本说明与源码](https://github.com/rrship/agents-bot/releases/tag/v1.2.0)
 
-## 能做什么
+| 你想做什么 | 从哪里开始 |
+| --- | --- |
+| 在一台电脑上试用两个模型 | [完成第一个本地任务](#完成第一个本地任务) |
+| 和异地队友共用项目，或关掉电脑后让 API 成员继续工作 | [加入云服务器房间](#加入云服务器房间) |
+| 在手机上查看进度 | [绑定安卓手机](#绑定安卓手机) |
 
-- **组长统筹。** 任选一位成员负责拆任务和验收，其余成员并行实现。例如让 GPT 分派任务，DeepSeek 实现功能，Kimi 编写测试。
-- **云服务器协作。** 通过 SSH 创建项目房间。不同地点的队友登录同一台服务器的项目账号，用房间号加入，可以各自提供已登录的模型。把 API 成员启动在服务器后台后，关闭发起任务的电脑，这些成员仍能继续工作。
-- **上下文交接。** 成员在实现阶段可以提交草稿、列出待办并指定接手人。上下文超过工作台的字符预算时，系统自动生成交接摘要。接手人从共享文件继续，协作记录保留交接原因。
-- **平等协作。** 成员先交换接口约定，再分别提交文件并互审集成结果。
-- **手机扫码查看进度。** 在 Windows 工作台点「手机监控」，再用安卓端扫码绑定，即可查看任务状态、组长和最近的协作记录。两端连接同一个 Tailscale 私有网络后，手机也可以使用移动数据查看进度。[安装与配对说明](手机监控.md)
-- **独立连接。** 支持 GPT、Gemini、Claude、DeepSeek、Kimi 和 GLM。每位成员分别配置官方 API Key 或本机账号客户端，同一团队可以混用两种方式。
-- **交付可检查。** 工作台在独立副本中集成文件，展示协作记录和文件差异，并收集验收命令的退出码与输出。可以暂停、恢复或补充要求。
+## 完成第一个本地任务
 
-## 在电脑上完成第一个任务
+1. **启动。** 将 Windows 便携包完整解压到可写目录，双击 `AgentsBot.exe`。包内自带 Python 和 Tk。
+2. **接入成员。** 在「成员与连接」勾选 2 至 6 位成员。举例来说，GPT 可以选「账号登录」，先安装 Codex CLI，再点「登录账号…」；DeepSeek 可以选「API Key」，填写模型 ID 和密钥。分别点「测试连接」，确认两位成员都能回复。[六家模型的账号客户端和密钥配置](使用说明.md#选择团队和模型)
+3. **选择协作方式。** 想让 GPT 派单和验收，就选「组长统筹」，将 GPT 设为组长；想让成员先商量接口、再并行实现和互审，就选「平等协作」。
+4. **给团队一个可验收的小任务。** 在「任务工作台」点「选择…」，选一个空目录。把下面这段复制到「需求与验收条件」：
 
-1. 在 Windows 完整解压便携包，双击 `AgentsBot.exe`。从源码启动时，使用带 Tk 的 Python 3.11 或更新版本，在仓库目录运行 `python app.py`。
-2. 打开「成员与连接」，勾选至少两位成员。每人分别填写模型 ID 和 API Key，或安装对应的本机账号客户端后点「登录账号…」。逐个点「测试连接」。若希望由一人派单和复核，再选「组长统筹」并指定组长。
-3. 选择项目目录，输入目标和验收标准。例如「做一个离线待办应用，支持新增和重启后查询，请同时提供单元测试和启动检查」。
-4. 如需自动验收，填写测试和启动检查命令，每行一个 JSON 参数数组，例如 `["python","smoke.py"]`。也可以留空，交付后人工验收。
-5. 点击「开始协作」。完成后从「交付目录」查看程序，从「改动差异」检查修改。
+   > 用 Python 标准库写一个离线命令行待办工具。运行 `python todo.py add 买牛奶` 后，退出并重新运行 `python todo.py list` 仍能看到“买牛奶”。请提供自动化测试，以及使用临时目录验证这个过程的 `smoke.py`。
 
-账号客户端、环境变量、DeepSeek Harness 接入和完整示例见[中文使用说明](使用说明.md)。工作台会将任务以及所需的项目文本发送给你选定的服务。验收命令以当前 Windows 用户权限运行。
+5. **运行并查看交付。** 在「构建或测试命令」填 `["python","-m","unittest","discover","-v"]`，在「启动冒烟检查」填 `["python","smoke.py"]`。点「开始协作」，在「协作记录」查看分工、修改和检查结果。结束后点「交付目录」取回文件，点「改动差异」审查修改。两栏命令都留空时，交付会标记为「待人工验收」。
 
-## 开发与验证
+成员在实现阶段可以把已完成的文件、接口决定和剩余工作一起交给下一位。工作台也会在上下文首次超过字符预算且有接手人时自动交接。可以在协作记录中查看原因，暂停后用「继续」恢复。[上下文交接说明](使用说明.md#上下文交接)
 
-在仓库目录运行 `python -m unittest discover -v`。测试使用模拟模型回复，并实际执行本地验收命令。真实账号和 API 需要使用者配置后通过「测试连接」核验。
+## 加入云服务器房间
 
-安卓扫码使用 [ZXing Core](https://github.com/zxing/zxing)，电脑二维码使用 [Project Nayuki QR Code generator](https://www.nayuki.io/page/qr-code-generator-library)。
+准备一台可通过 SSH 登录的 Linux 服务器，安装带 SQLite 和 HTTPS 支持的 Python 3.11 或更新版本。异地队友使用同一个受信任的项目 SSH 账号，每人可以使用自己的 SSH 密钥。两台电脑都能访问服务器的 SSH 端口即可协作。
 
-## 和异地队友完成同一个项目
+1. **发起人创建房间。** 在「成员与连接」选好整个团队，在「任务工作台」写目标。打开「云服务器」，填写服务器、端口和 SSH 用户，点「连接」。首次登录时核对主机指纹，密码在 OpenSSH 窗口输入。点「从工作台创建房间」→「复制房间号」，把房间号发给队友。
+2. **队友加入并提供成员。** 连接同一服务器和项目账号，输入房间号，点「加入」。在「本次提供的成员」勾选自己负责的模型。用本机已登录的账号时点「本机参与」，并保持电脑在线；希望关机后继续时，选用 API Key 的成员，点「启动服务器 API」。确认后，服务器进程通过 SSH 接收所选密钥，并使用相应 API 额度。
+3. **取回结果。** 在房间查看分工、交接和已提交文件，点「导出文件…」保存到新的本地目录。云房间面向小型文本项目，组长可在云端审阅交付，构建和测试命令在导出后本地执行。[服务器准备、文件大小限制与断线恢复](使用说明.md#云服务器协作)
 
-1. 发起人先选好团队，在「任务工作台」填写目标。打开「云服务器」，用项目 SSH 账号连接装有 Python 3.11+ 的 Linux 服务器，点「从工作台创建房间」并复制房间号。
-2. 队友连接同一服务器和项目账号，输入房间号并点「加入」。每人勾选自己提供的成员，使用本机账号时点「本机参与」，需要让 API 成员在电脑关闭后继续工作时点「启动服务器 API」。
-3. 在房间中查看成员进度和交接记录，点「导出文件…」保存交付。需要运行构建或测试时，在本地执行验收命令。[完整云服务器指南](使用说明.md#云服务器协作)
+## 绑定安卓手机
 
-**用手机看云任务。** 在已连接房间的电脑勾选「手机显示此房间」，然后用安卓端扫码绑定。已绑定的手机可以直接打开。手机通过这台电脑获取更新，查看期间请保持工作台和 SSH 连接在线。[手机绑定和跨网查看](手机监控.md)
+1. 电脑右上角点「手机监控」，手机打开配套安卓应用，点「扫码绑定」并扫描电脑上的二维码。同一可信 Wi-Fi 下可直接配对。
+2. 外出使用移动数据时，让手机和电脑加入同一个 Tailscale 私有网络。确认电脑配对界面显示「可跨网」。原来通过局域网配对的手机，需要切换到 Tailscale 地址后重新扫码。
+3. 查看云任务时，在已加入房间的电脑勾选「手机显示此房间」。手机通过这台电脑获取更新，查看期间请保持工作台和 SSH 会话在线。已启动的服务器 API 成员可以在电脑关机后继续工作。[配对、跨网查看与解绑](手机监控.md)
+
+## 从源码运行
+
+使用带 Tk 的 Python 3.11 或更新版本，在项目目录运行 `python app.py`。运行自动测试使用 `python -m unittest discover -v`。测试使用模拟模型回复，真实账号或密钥可在工作台用「测试连接」核验。[完整中文使用说明](使用说明.md)
 
 ## 项目参考
 
-成员交接参考 [crew](https://github.com/dichovsky/crew)。分工与独立验收参考 [multi-agent-collaboration](https://github.com/Gambler134201/multi-agent-collaboration)。DeepSeek Harness 账号模式可通过 [dsh-baton](https://github.com/JialaoLiu/dsh-baton) 的本机命令派单并等待返回。
+成员交接参考 [crew](https://github.com/dichovsky/crew)，分工与独立验收参考 [multi-agent-collaboration](https://github.com/Gambler134201/multi-agent-collaboration)。DeepSeek Harness 账号可通过本机命令派单并等待回复。[dsh-baton](https://github.com/JialaoLiu/dsh-baton)
 
-云工作区借鉴了 HUD 将任务环境与模型连接分开的设计。SSH 房间、领取任务和上下文交接由本项目实现。[hud-evals/hud-python](https://github.com/hud-evals/hud-python)
+云房间借鉴 HUD 将任务环境与模型连接分开的设计，SSH 房间、任务领取和上下文交接由本项目实现。[hud-evals/hud-python](https://github.com/hud-evals/hud-python)
+
+安卓扫码与电脑端二维码分别使用 [ZXing Core](https://github.com/zxing/zxing) 和 [Project Nayuki QR Code generator](https://www.nayuki.io/page/qr-code-generator-library)。
