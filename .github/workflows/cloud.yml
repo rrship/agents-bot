@@ -30,23 +30,25 @@ jobs:
           chmod 700 "$testdir"
           ssh-keygen -q -t ed25519 -N '' -f "$testdir/hostkey"
           ssh-keygen -q -t ed25519 -N '' -f "$testdir/clientkey"
+          sudo useradd --create-home --shell /bin/bash agentsbot-ci
+          sudo install -d -m 700 -o agentsbot-ci -g agentsbot-ci /home/agentsbot-ci/.ssh
+          sudo install -m 600 -o agentsbot-ci -g agentsbot-ci "$testdir/clientkey.pub" /home/agentsbot-ci/.ssh/authorized_keys
           port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
           sudo mkdir -p /run/sshd
-          sudo /usr/sbin/sshd -f /dev/null -p "$port" -h "$testdir/hostkey" \
+          sudo /usr/sbin/sshd -E "$testdir/sshd.log" -f /dev/null -p "$port" -h "$testdir/hostkey" \
             -o "ListenAddress=127.0.0.1" -o "PidFile=$testdir/sshd.pid" \
-            -o "AuthorizedKeysFile=$testdir/clientkey.pub" -o "PasswordAuthentication=no" \
-            -o "AllowUsers=$(id -un)" -o "AllowTcpForwarding=no"
-          trap 'sudo kill "$(cat "$testdir/sshd.pid")"' EXIT
+            -o "UsePAM=yes" -o "PasswordAuthentication=no" -o "KbdInteractiveAuthentication=no" \
+            -o "AuthenticationMethods=publickey" -o "AllowUsers=agentsbot-ci" -o "AllowTcpForwarding=no"
+          trap 'rc=$?; if [ "$rc" -ne 0 ]; then sudo tail -30 "$testdir/sshd.log"; fi; sudo kill "$(sudo cat "$testdir/sshd.pid")"' EXIT
           mkdir -p -m 700 ~/.ssh
           echo "[127.0.0.1]:$port $(cat "$testdir/hostkey.pub")" >> ~/.ssh/known_hosts
           CLOUD_TEST_PORT="$port" CLOUD_TEST_KEY="$testdir/clientkey" python3 - <<'PY'
-          import getpass
           import os
           from contextlib import ExitStack
           from cloud_ssh import CloudSSH
 
           def connect(stack):
-              conn = CloudSSH("127.0.0.1", getpass.getuser(), os.environ["CLOUD_TEST_PORT"], os.environ["CLOUD_TEST_KEY"])
+              conn = CloudSSH("127.0.0.1", "agentsbot-ci", os.environ["CLOUD_TEST_PORT"], os.environ["CLOUD_TEST_KEY"])
               stack.callback(conn.close)
               conn.connect()
               return conn.rpc
