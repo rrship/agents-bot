@@ -6,10 +6,13 @@ Agents Bot 是一个 Windows 多智能体开发工作台。你可以把一个软
 
 - **组长统筹。** 任选一位成员负责拆任务和验收，其余成员并行实现。例如让 GPT 分派任务，DeepSeek 实现功能，Kimi 编写测试。
 - **平等协作。** 成员先交换接口约定，再分别提交文件并互审集成结果。
+- **手机扫码查看进度。** 在 Windows 工作台点「手机监控」，再用安卓端扫码绑定，即可查看任务状态、组长和最近的协作记录。两端连接同一个 Tailscale 私有网络后，手机也可以使用移动数据查看进度。[安装与配对说明](手机监控.md)
 - **独立连接。** 支持 GPT、Gemini、Claude、DeepSeek、Kimi 和 GLM。每位成员分别配置官方 API Key 或本机账号客户端，同一团队可以混用两种方式。
 - **交付可检查。** 工作台在独立副本中集成文件，展示协作记录和文件差异，并收集验收命令的退出码与输出。可以暂停、恢复或补充要求。
 
 ## 快速开始
+
+Windows x64 便携包和 Android 8.0 及以上的安装包在 [GitHub Releases](https://github.com/rrship/agents-bot/releases) 下载。
 
 1. 在 Windows 完整解压便携包，双击 `AgentsBot.exe`。从源码启动时，使用带 Tk 的 Python 3.11 或更新版本，在仓库目录运行 `python app.py`。
 2. 打开「成员与连接」，选至少两位成员并测试连接。组长模式还需要选一位组长。
@@ -22,6 +25,8 @@ Agents Bot 是一个 Windows 多智能体开发工作台。你可以把一个软
 ## 开发与验证
 
 在仓库目录运行 `python -m unittest discover -v`。测试使用模拟模型回复，并实际执行本地验收命令。真实账号和 API 需要使用者配置后通过「测试连接」核验。
+
+安卓扫码使用 [ZXing Core](https://github.com/zxing/zxing)，电脑二维码使用 [Project Nayuki QR Code generator](https://www.nayuki.io/page/qr-code-generator-library)。
 
 ## 项目参考
 
