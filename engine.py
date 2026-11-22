@@ -11,6 +11,8 @@ import uuid
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from handoff import HANDOFF_INSTRUCTION, automatic_handoff, bounded_prompt, eligible_members, parse_handoff
+
 def call(agent, config, prompt):
     from providers import call as invoke
     return invoke(agent, config, prompt)
@@ -188,11 +190,14 @@ class Job:
         leader = s["leader"]
         workers = [name for name in members if name != leader]
 
+        def stage_context(root):
+            return dict(goal=s["goal"], files=files_at(root), messages=s["messages"][-16:],
+                        feedback=s["feedback"], checks=s["checks"], members=members, leader=leader)
+
         def exchange(stage, root, participants, instruction, personal=None, evidence=None):
             checkpoint()
             batch = s["answers"].setdefault(f"{s['round']}-{stage}", {})
-            context = dict(goal=s["goal"], files=files_at(root), messages=s["messages"][-16:],
-                           feedback=s["feedback"], checks=s["checks"], members=members, leader=leader)
+            context = stage_context(root)
             context.update(evidence or {})
             with ThreadPoolExecutor(max_workers=len(participants)) as pool:
                 futures = {}
@@ -200,7 +205,7 @@ class Job:
                     if agent in batch:
                         continue
                     ctx = dict(context, assignment=(personal or {}).get(agent))
-                    prompt = f"你是{agent}。阶段={stage}。{instruction}。只输出 JSON。\n" + json.dumps(ctx, ensure_ascii=False)
+                    prompt = bounded_prompt(f"你是{agent}。阶段={stage}。{instruction}。只输出 JSON。", ctx)
                     futures[pool.submit(call, agent, configs[agent], prompt)] = agent
                 errors = []
                 for future in as_completed(futures):
@@ -212,13 +217,6 @@ class Job:
                             if (not isinstance(assignments, dict) or set(assignments) != set(workers)
                                     or any(not isinstance(spec, str) or not spec.strip() for spec in assignments.values())):
                                 raise ValueError("assignments 必须为每个执行成员提供一份非空分工说明")
-                        if stage == "实现":
-                            if not isinstance(value.get("files"), dict):
-                                raise ValueError("实现结果缺少 files")
-                            for name, content in value["files"].items():
-                                clean_path(name)
-                                if not isinstance(content, str):
-                                    raise ValueError(f"文件内容无效 {name}")
                         if stage in {"互审", "验收复核"} and type(value.get("approved")) is not bool:
                             raise ValueError("审阅结果缺少 approved")
                         if stage == "验收复核":
@@ -242,6 +240,90 @@ class Job:
                         errors.append(f"{agent}: {exc}")
                 if errors:
                     raise RuntimeError(" / ".join(errors))
+            checkpoint()
+            return batch
+
+        def implement(root, assignments):
+            key = f"{s['round']}-实现"
+            batch = s["answers"].setdefault(key, {})
+            transfers = s.setdefault("handoffs", {}).setdefault(key, {})
+            context = stage_context(root)
+            errors = []
+
+            def transfer(owner, actor, packet, drafts):
+                trail = transfers.setdefault(owner, [])
+                trail.append(dict(sender=actor, **packet, files=drafts))
+                line = f"{actor} → {packet['to']} [任务交接] {packet['reason']}\n{packet['summary']}"
+                s["messages"].append(line)
+                self.save()
+                log(line)
+
+            # One future per original assignment. Saving transfers in this thread
+            # lets a resumed job start with the last recipient and its exact drafts.
+            with ThreadPoolExecutor(max_workers=len(workers)) as pool:
+                pending = [owner for owner in workers if owner not in batch]
+                while pending:
+                    checkpoint()
+                    futures = {}
+                    for owner in pending:
+                        trail = transfers.get(owner, [])
+                        actor = trail[-1]["to"] if trail else owner
+                        visited = [step["sender"] for step in trail]
+                        targets = eligible_members(actor, workers + ([leader] if leader else []), visited)
+                        drafts = {p: v for step in trail for p, v in step["files"].items()}
+                        ctx = dict(context, assignment=assignments[owner], assignment_owner=owner,
+                                   handoff_candidates=targets)
+                        packet = automatic_handoff(ctx, actor, targets, visited)
+                        if packet:
+                            transfer(owner, actor, packet, {})
+                            visited = visited + [actor]
+                            actor = packet["to"]
+                            trail = transfers[owner]
+                            targets = eligible_members(actor, targets, visited)
+                            ctx["handoff_candidates"] = targets
+                        if trail:
+                            ctx.update(summary=trail[-1]["summary"], received_from=trail[-1]["sender"],
+                                       checkpoint_paths=list(drafts), files={**context["files"], **drafts})
+                        prompt = bounded_prompt(
+                            f'你是{actor}。阶段=实现。按 assignment 完成分工，返回 '
+                            '{"message":"交付说明","files":{"相对路径":"完整文件内容"}}。'
+                            '只提交改动的文本文件。已交接的草稿会自动保留。' + HANDOFF_INSTRUCTION + '只输出 JSON。',
+                            ctx)
+                        shown = json.loads(prompt.split("\n", 1)[1])["files"].keys()
+                        future = pool.submit(call, actor, configs[actor], prompt)
+                        futures[future] = owner, actor, targets, visited, drafts, shown
+                    pending = []
+                    for future in as_completed(futures):
+                        owner, actor, targets, visited, drafts, shown = futures[future]
+                        try:
+                            reply = parse(future.result())
+                            packet = parse_handoff(reply, actor, targets, visited)
+                            writes = reply.get("files", {} if packet else None)
+                            if not isinstance(writes, dict):
+                                raise ValueError("实现结果缺少 files")
+                            normalized = {}
+                            for name, content in writes.items():
+                                path = clean_path(name)
+                                if not isinstance(content, str):
+                                    raise ValueError(f"文件内容无效 {path}")
+                                if (path in context["files"] or path in drafts) and path not in shown:
+                                    raise ValueError(f"未完整展示的文件不能覆盖 {path}")
+                                normalized[path] = content
+                            if packet:
+                                transfer(owner, actor, packet, normalized)
+                                pending.append(owner)
+                            else:
+                                batch[owner] = dict(message=reply["message"], files={**drafts, **normalized},
+                                                    completed_by=actor)
+                                recipients = [leader] if leader and actor != leader else [m for m in members if m != actor]
+                                line = f"{actor} → {', '.join(recipients)} [实现] {reply['message']}"
+                                s["messages"].append(line)
+                                self.save()
+                                log(line)
+                        except Exception as exc:
+                            errors.append(f"{actor}: {exc}")
+            if errors:
+                raise RuntimeError(" / ".join(errors))
             checkpoint()
             return batch
 
@@ -323,14 +405,14 @@ class Job:
                 assignments = {name: ("应用实现与启动入口" if i == 0 else f"测试及独立模块，与其他成员商定文件边界（成员 {i+1}）")
                                for i, name in enumerate(workers)}
                 exchange("分工", base, workers, '与同伴商定接口和文件归属，回复 {"message":"..."}', assignments)
-            replies = exchange("实现", base, workers,
-                '按 assignment 实现分工，返回 {"message":"交接说明","files":{"相对路径":"完整文件内容"}}。只提交改动的文本文件', assignments)
+            replies = implement(base, assignments)
             out = self.path / f"round-{n}"
             changed, issues = integrate(base, out, replies)
             if leader:
                 records = [] if issues else test(out)
                 evidence = dict(assignments=assignments, changed_paths=changed, integration_issues=list(issues),
-                                worker_results={a: dict(message=r["message"], paths=list(r["files"])) for a,r in replies.items()},
+                                worker_results={a: dict(message=r["message"], paths=list(r["files"]),
+                                                        completed_by=r.get("completed_by", a)) for a,r in replies.items()},
                                 test_results=records)
                 review = exchange("验收复核", out, [leader],
                     '你是组长。检查集成代码、每份交付、实际命令结果和原始目标，逐项给出验收结论。'

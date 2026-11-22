@@ -1,0 +1,69 @@
+name: Linux cloud collaboration
+on:
+  push:
+    paths:
+      - "cloud_*.py"
+      - "test_cloud_*.py"
+      - "handoff.py"
+      - "providers.py"
+      - ".github/workflows/cloud.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cloud:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Test room, worker, handoff and detached processes
+        run: python3 -m unittest -v test_cloud_room test_cloud_worker test_cloud_daemon test_handoff
+      - name: Connect two desktop clients to a loopback SSH server
+        shell: bash
+        run: |
+          set -eu
+          testdir="$(mktemp -d "$HOME/agents-bot-ssh.XXXXXX")"
+          chmod 700 "$testdir"
+          ssh-keygen -q -t ed25519 -N '' -f "$testdir/hostkey"
+          ssh-keygen -q -t ed25519 -N '' -f "$testdir/clientkey"
+          port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+          sudo mkdir -p /run/sshd
+          sudo /usr/sbin/sshd -f /dev/null -p "$port" -h "$testdir/hostkey" \
+            -o "ListenAddress=127.0.0.1" -o "PidFile=$testdir/sshd.pid" \
+            -o "AuthorizedKeysFile=$testdir/clientkey.pub" -o "PasswordAuthentication=no" \
+            -o "AllowUsers=$(id -un)" -o "AllowTcpForwarding=no"
+          trap 'sudo kill "$(cat "$testdir/sshd.pid")"' EXIT
+          mkdir -p -m 700 ~/.ssh
+          echo "[127.0.0.1]:$port $(cat "$testdir/hostkey.pub")" >> ~/.ssh/known_hosts
+          CLOUD_TEST_PORT="$port" CLOUD_TEST_KEY="$testdir/clientkey" python3 - <<'PY'
+          import getpass
+          import os
+          from contextlib import ExitStack
+          from cloud_ssh import CloudSSH
+
+          def connect(stack):
+              conn = CloudSSH("127.0.0.1", getpass.getuser(), os.environ["CLOUD_TEST_PORT"], os.environ["CLOUD_TEST_KEY"])
+              stack.callback(conn.close)
+              conn.connect()
+              return conn.rpc
+
+          with ExitStack() as first:
+              rpc = connect(first)
+              room = rpc("create", goal="Calendar", members=["GPT", "Gemini"], files={})["room"]
+              task = rpc("claim", room=room, member="GPT", client="desktop-one")["task"]
+              rpc("handoff", room=room, member="GPT", client="desktop-one", id=task["id"], lease=task["lease"],
+                  to="Gemini", summary="Complete leap year handling", files={"calendar.py": "# draft"})
+          with ExitStack() as second:
+              rpc = connect(second)
+              task = rpc("claim", room=room, member="Gemini", client="desktop-two")["task"]
+              assert task["summary"] == "Complete leap year handling"
+              assert task["files"]["calendar.py"] == "# draft"
+              rpc("finish", room=room, member="Gemini", client="desktop-two", id=task["id"], lease=task["lease"],
+                  message="Added leap year handling", files={"calendar.py": "# complete"})
+              assert rpc("export", room=room)["files"] == {"calendar.py": "# complete"}
+              assert rpc("worker_status", room=room)["status"] == "idle"
+          PY

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#173f3b"><title>Agents Bot · 手机监控</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f7f7f2;color:#182f2c;font:16px/1.55 system-ui,sans-serif}header{position:sticky;top:0;z-index:1;background:#173f3b;color:white;padding:14px max(20px,calc((100vw - 680px)/2));display:flex;justify-content:space-between;align-items:center}header b{font-size:19px}#connection{font-size:13px;color:#d4eae2}main{max-width:720px;margin:auto;padding:24px 20px 64px}section{background:white;border:1px solid #d9e1da;border-radius:16px;padding:20px}small{color:#526c65}h1{margin:12px 0;font-size:22px;line-height:1.4;overflow-wrap:anywhere;white-space:pre-wrap}#status{float:right;color:#145a47;background:#e3f3eb;border-radius:16px;padding:2px 10px;font-size:13px}#members{display:flex;flex-wrap:wrap;gap:6px}#members span{font-size:13px;background:#eff3ef;border-radius:6px;padding:3px 8px}.bar{display:flex;align-items:center;justify-content:space-between;margin:24px 0 8px}h2{font-size:17px;margin:0}button{font:inherit;color:#285d51;background:white;border:1px solid #cad8d1;padding:7px 12px;border-radius:10px}article{padding:14px 0;border-bottom:1px solid #dae1da;overflow-wrap:anywhere}article b{color:#25614f;font-size:13px}article p{margin:4px 0;white-space:pre-wrap}#empty{color:#60716a}
+</style>
+<header><b>Agents Bot</b><span id="connection" role="status">正在连接…</span></header>
+<main><section><small>电脑任务</small><span id="status">等待连接</span><h1 id="goal">等待电脑同步</h1><div id="members"></div></section>
+<div class="bar"><h2>协作动态</h2><button id="order">最新在前 ↓</button></div><div id="events"></div><p id="empty">等待任务动态…</p></main>
+<script>
+const el=id=>document.getElementById(id);
+let key=location.hash.slice(1), latest=true, entries=[], previous='';
+function draw(){
+ const fragment=document.createDocumentFragment();
+ for(const text of latest?[...entries].reverse():entries){
+  const article=document.createElement('article'), title=document.createElement('b'), body=document.createElement('p');
+  const m=text.match(/^(.{1,100}?)\s+\[([^\]]+)\]\s*([\s\S]*)$/);
+  title.textContent=m?m[1]+' · '+m[2]:'工作台';body.textContent=m?m[3]:text;
+  article.append(title,body);fragment.append(article);
+ }
+ el('events').replaceChildren(fragment);el('empty').hidden=entries.length>0;
+}
+el('order').onclick=()=>{latest=!latest;el('order').textContent=latest?'最新在前 ↓':'最早在前 ↑';draw()};
+async function sync(){
+ if(!key){el('connection').textContent='请用电脑上的完整连接地址打开';return}
+ const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),7000);
+ try{
+  const response=await fetch('/progress',{headers:{Authorization:'Bearer '+key},signal:controller.signal});
+  if(response.status===403){el('connection').textContent='连接已失效，请重新配对';return}
+  if(!response.ok)throw Error();
+  const raw=await response.text();if(raw!==previous){
+   const s=JSON.parse(raw);el('goal').textContent=s.goal||'等待开始任务';el('status').textContent=s.status||'就绪';
+   el('members').replaceChildren(...(s.members||[]).map(n=>{const tag=document.createElement('span');tag.textContent=n+(n===s.leader?' · 组长':'');return tag}));
+   entries=s.events||[];draw();previous=raw;
+  }
+  el('connection').textContent='已同步 '+new Date().toLocaleTimeString();
+ }catch{el('connection').textContent='电脑离线 · 正在重连'}
+ finally{clearTimeout(timer)}
+ setTimeout(sync,2000)
+}
+sync();
+</script></html>

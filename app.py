@@ -3,6 +3,10 @@ import json
 import os
 import queue
 import threading
+from collections import deque
+from mobile import Monitor, device_key, saved_address
+from pairing_ui import PairingWindow
+from cloud_ui import CloudPanel
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -47,6 +51,8 @@ class Desk:
         root.configure(bg=BG)
         root.option_add("*Font", (FONT, 10))
         self.queue = queue.Queue()
+        self.monitor = None
+        self.activity = deque(maxlen=100)
         self.stop = threading.Event()
         self.running = False
         self.job = None
@@ -61,6 +67,7 @@ class Desk:
         tk.Label(header, text="Agents Bot", font=("Segoe UI Semibold", 19), bg=INK, fg=WHITE).pack(side="left")
         tk.Label(header, text="多智能体开发工作台", fg="#c0d7df", bg=INK, padx=16).pack(side="left")
         tk.Label(header, textvariable=self.status, bg="#294858", fg=WHITE, padx=10, pady=4).pack(side="right")
+        ttk.Button(header, text="手机监控", command=self.mobile_settings).pack(side="right", padx=8)
         self.tabs = ttk.Notebook(root)
         self.tabs.pack(fill="both", expand=True, padx=15, pady=12)
         self.tasks = ttk.Frame(self.tabs, padding=12)
@@ -69,9 +76,48 @@ class Desk:
         self.tabs.add(self.team, text="成员与连接")
         self._task_view()
         self._team_view()
+        self.cloud = CloudPanel(self.tabs, self)
+        self.tabs.add(self.cloud, text="云服务器")
         self._controls()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.after(100, self._poll)
+        self.pairing_window = None
+        self.root.after_idle(self.restore_monitor)
+
+    def restore_monitor(self):
+        address = saved_address()
+        if address and not self.monitor:
+            try:
+                self.enable_monitor(address)
+            except OSError:
+                self.root.after(10000, self.restore_monitor)
+            except ValueError:
+                pass
+
+    def enable_monitor(self, address):
+        if self.monitor and self.monitor.server.server_address[0] == address:
+            return
+        replacement = Monitor(address, device_key(), 48763)
+        if self.monitor:
+            self.monitor.close()
+        self.monitor = replacement
+        self.publish_mobile()
+
+    def mobile_settings(self):
+        if self.pairing_window and self.pairing_window.winfo_exists():
+            self.pairing_window.lift()
+            return
+        self.pairing_window = PairingWindow(self)
+
+    def publish_mobile(self):
+        if self.monitor:
+            cloud = self.cloud.phone_snapshot()
+            if cloud:
+                self.monitor.publish(*cloud)
+                return
+            state = self.job.state if self.job else {}
+            self.monitor.publish(state.get("goal", ""), self.status.get(), state.get("members", []),
+                                 state.get("leader"), self.activity)
 
     def _style(self):
         s = ttk.Style()
@@ -313,12 +359,14 @@ class Desk:
         self.output.configure(state="normal" if delivered else "disabled")
 
     def _append(self, line):
+        self.activity.append(str(line)[-4000:])
         self.log.configure(state="normal")
         self.log.insert("end", str(line) + "\n")
         self.log.see("end")
         self.log.configure(state="disabled")
 
     def _clear_log(self):
+        self.activity.clear()
         self.log.configure(state="normal")
         self.log.delete("1.0", "end")
         self.log.configure(state="disabled")
@@ -469,6 +517,7 @@ class Desk:
             messagebox.showerror("查看差异", str(error), parent=self.root)
 
     def _poll(self):
+        self.cloud.poll()
         while True:
             try:
                 kind, value = self.queue.get_nowait()
@@ -497,6 +546,8 @@ class Desk:
                 self._controls()
                 if self.cancel_pending:
                     self._finish_cancel()
+        if self.monitor:
+            self.publish_mobile()
         self.root.after(100, self._poll)
 
     def close(self):
@@ -504,6 +555,9 @@ class Desk:
             self.request_pause()
             messagebox.showinfo("等待暂停", "当前步骤结束并保存后即可关闭窗口。", parent=self.root)
             return
+        if self.monitor:
+            self.monitor.close()
+        self.cloud.disconnect()
         self.root.destroy()
 
 
