@@ -8,7 +8,7 @@ import uuid
 from cloud_room import validated_files
 from engine import parse
 from handoff import HANDOFF_INSTRUCTION, automatic_handoff, bounded_prompt, eligible_members, parse_handoff
-from providers import NAMES, call
+from providers import BUILTIN, MEMBER_NAMES, call
 
 
 POLL_SECONDS = 2.5
@@ -57,6 +57,7 @@ def submission(task, prompt, answer):
 def run_claim(rpc, lease, task, config, stopping):
     """Only this thread may commit. A late provider reply cannot revive a released lease."""
     committed = False
+    cancelled = threading.Event()
     try:
         prompt, result = prepare(task)
         if result is None:
@@ -65,7 +66,11 @@ def run_claim(rpc, lease, task, config, stopping):
 
             def invoke():
                 try:
-                    response["answer"] = call(lease["member"], config, prompt)
+                    if lease["member"] == BUILTIN:
+                        from lite_agent import team_call
+                        response["answer"] = team_call(config, prompt, stop=cancelled)
+                    else:
+                        response["answer"] = call(lease["member"], config, prompt)
                 except Exception as error:
                     response["error"] = error
                 finally:
@@ -89,6 +94,7 @@ def run_claim(rpc, lease, task, config, stopping):
             rpc(op, **lease, **fields)
             committed = True
     finally:
+        cancelled.set()
         if not committed:
             try:
                 rpc("release", **lease)
@@ -99,7 +105,7 @@ def run_claim(rpc, lease, task, config, stopping):
 
 def run_team(rpc, room, configs, stop, report):
     state = rpc("status", room=room)
-    if not configs or any(name not in NAMES or name not in state["members"] for name in configs):
+    if not configs or any(name not in MEMBER_NAMES or name not in state["members"] for name in configs):
         raise ValueError("请选择房间内由本设备提供的成员")
     client = uuid.uuid4().hex
     failed = threading.Event()

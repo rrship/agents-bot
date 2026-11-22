@@ -21,10 +21,27 @@ AGENTS = ("GPT", "Gemini")
 EXCLUDED = {".git", ".agentdesk", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".aws", ".ssh", ".codex", ".gemini"}
 
 
+def account_document(data):
+    """Recognize this application's import format, whatever the user named the JSON."""
+    def is_profile(row):
+        return (isinstance(row, dict) and {"name", "provider", "model"} <= row.keys()
+                and ("api_key" in row or "key_env" in row))
+    return (is_profile(data) or isinstance(data, dict) and isinstance(data.get("accounts"), list)
+            and any(is_profile(row) for row in data["accounts"]))
+
+
 def hidden(path):
-    return (path.name.startswith(".") or path.name.lower() in EXCLUDED
+    if (path.name.startswith(".") or path.name.lower() in EXCLUDED
             or path.suffix.lower() in {".pem", ".key", ".pfx"}
-            or path.is_symlink() or bool(getattr(path.lstat(), "st_file_attributes", 0) & 1024))
+            or path.is_symlink() or bool(getattr(path.lstat(), "st_file_attributes", 0) & 1024)):
+        return True
+    if path.suffix.lower() != ".json" or not path.is_file() or path.stat().st_size > 1024 * 1024:
+        return False
+    try:
+        with path.open(encoding="utf-8-sig") as stream:
+            return account_document(json.load(stream))
+    except (ValueError, RecursionError):
+        return False
 
 
 def ignored(folder, names):

@@ -15,12 +15,24 @@ from cloud_room import dispatch
 class DetachedWorkers(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
+        # A detached Windows child may briefly hold its cwd after publishing its
+        # terminal state. Retry our own temporary directory cleanup after it exits.
+        def cleanup():
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    temp.cleanup()
+                    return
+                except PermissionError:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(.05)
+        self.addCleanup(cleanup)
         self.base = Path(temp.name)
         self.root = self.base / "rooms"
         self.runtime = self.base / "runtime"
         self.runtime.mkdir()
-        for name in ("cloud_daemon", "cloud_room", "cloud_worker", "providers", "extra_accounts", "engine", "handoff"):
+        for name in ("cloud_daemon", "cloud_room", "cloud_worker", "providers", "extra_accounts", "engine", "handoff", "lite_agent"):
             shutil.copyfile(Path(__file__).with_name(name + ".py"), self.runtime / (name + ".py"))
         # The production entry point still launches a detached interpreter. Replace only the model in its isolated copy.
         with (self.runtime / "providers.py").open("a", encoding="utf-8") as stream:

@@ -2,18 +2,45 @@
 
 Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当组长、DeepSeek 写功能、Gemini 写测试，看它们如何分工、交接草稿并审阅同一份项目。工作台支持 GPT、Gemini、Claude、DeepSeek、Kimi 和 GLM。一个团队可以同时使用 API Key 和已登录的本机账号。
 
-**下载 v1.2.0**　[Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.2.0/AgentsBot-v1.2.0-Windows-x64.zip) · [安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.2.0/AgentsBot-Android.apk) · [版本说明与源码](https://github.com/rrship/agents-bot/releases/tag/v1.2.0)
+**桌面版 v1.3.0** 内置了可以独立处理任务的轻量 Agent。同一服务商可以保存多个 API 账号，分别用于个人对话和团队分工。下载 Windows 便携包，完整解压到可写目录，再双击 `AgentsBot.exe`。
+
+[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.3.0/AgentsBot-v1.3.0-Windows-x64.zip) · [下载配套安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.3.0/AgentsBot-Android.apk) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.3.0/AgentsBot-v1.3.0-source.zip) · [查看 v1.3.0 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.3.0)
 
 | 你想做什么 | 从哪里开始 |
 | --- | --- |
+| 只有一个 API Key，想直接分析文件或生成草稿 | [使用内置 Agent](#使用内置-agent) |
 | 在一台电脑上试用两个模型 | [完成第一个本地任务](#完成第一个本地任务) |
 | 和异地队友共用项目，或关掉电脑后让 API 成员继续工作 | [加入云服务器房间](#加入云服务器房间) |
 | 在手机上查看进度 | [绑定安卓手机](#绑定安卓手机) |
 
+## 使用内置 Agent
+
+1. 打开「内置 Agent 与账号」→「新建」。填写账号名称、模型服务和该账号可用的模型 ID，再填 API Key 或环境变量名。点「保存」。同一服务商可以分别保存个人和工作账号。
+2. 选好账号，在「任务或问题」输入要求并点「发送」。例如，点「添加参考文件…」选择一份费用明细 JSON，再输入「按类别汇总金额，列出缺少类别的记录，生成 summary.md」。Agent 可以列出、读取和搜索提供的文本。答复显示在页内，生成的文件用「导出草稿…」保存到新目录。
+3. 想让它参与原有的多人团队，点「用于团队内置 Agent」，再到「成员与连接」选其他成员及组长。也可点「用于同名模型成员」，为已有的 GPT、Gemini 等成员指定档案。独立对话切换账号后，原账号的本次对话和草稿可切回查看。
+
+已有多把密钥时，可以将账号写在同一个 JSON 文件里。下面的示例从环境变量读取 DeepSeek 密钥。先设置 `DEEPSEEK_API_KEY` 并重新打开工作台，把 `your-model-id` 换成账号已开通的模型 ID，再将内容保存为 UTF-8 的 `accounts.json`，点「导入账号 JSON」选中它。
+
+```json
+{
+  "version": 1,
+  "accounts": [
+    {
+      "name": "项目 DeepSeek",
+      "provider": "DeepSeek",
+      "model": "your-model-id",
+      "key_env": "DEEPSEEK_API_KEY"
+    }
+  ]
+}
+```
+
+账号管理器只保存环境变量名。直接填写 API Key 时，工作台使用 Windows 当前用户的 DPAPI 加密保存密钥。要把费用明细等业务 JSON 交给模型分析，请在对话中点「添加参考文件…」。[账号 JSON 格式与完整操作](使用说明.md#内置-agent-与账号管理)
+
 ## 完成第一个本地任务
 
 1. **启动。** 将 Windows 便携包完整解压到可写目录，双击 `AgentsBot.exe`。包内自带 Python 和 Tk。
-2. **接入成员。** 在「成员与连接」勾选 2 至 6 位成员。举例来说，GPT 可以选「账号登录」，先安装 Codex CLI，再点「登录账号…」；DeepSeek 可以选「API Key」，填写模型 ID 和密钥。分别点「测试连接」，确认两位成员都能回复。[六家模型的账号客户端和密钥配置](使用说明.md#选择团队和模型)
+2. **接入成员。** 在「成员与连接」勾选至少两位成员。六家模型和内置 Agent 可以组成最多七人的团队。例如，GPT 可以选「账号登录」，先安装 Codex CLI，再点「登录账号…」。DeepSeek 可以选「API Key」，填写模型 ID 和密钥。在这两个成员页分别点「测试连接」，确认两位成员都能回复。[六家模型的账号客户端和密钥配置](使用说明.md#选择团队和模型)
 3. **选择协作方式。** 想让 GPT 派单和验收，就选「组长统筹」，将 GPT 设为组长；想让成员先商量接口、再并行实现和互审，就选「平等协作」。
 4. **给团队一个可验收的小任务。** 在「任务工作台」点「选择…」，选一个空目录。把下面这段复制到「需求与验收条件」：
 
@@ -42,6 +69,8 @@ Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当�
 使用带 Tk 的 Python 3.11 或更新版本，在项目目录运行 `python app.py`。运行自动测试使用 `python -m unittest discover -v`。测试使用模拟模型回复，真实账号或密钥可在工作台用「测试连接」核验。[完整中文使用说明](使用说明.md)
 
 ## 项目参考
+
+内置 Agent 借鉴 Pi 的小型工具循环，通过现有模型适配器按需读取共享文本。多账号选择和 JSON 导入的交互参考 Cockpit Tools，账号文件使用 Agents Bot 自己的格式。[Pi coding agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) · [Cockpit Tools](https://github.com/jlcodes99/cockpit-tools)
 
 成员交接参考 [crew](https://github.com/dichovsky/crew)，分工与独立验收参考 [multi-agent-collaboration](https://github.com/Gambler134201/multi-agent-collaboration)。DeepSeek Harness 账号可通过本机命令派单并等待回复。[dsh-baton](https://github.com/JialaoLiu/dsh-baton)
 

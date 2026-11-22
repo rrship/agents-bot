@@ -23,6 +23,8 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 _open = urllib.request.build_opener(_NoRedirect).open
 NAMES = ("GPT", "Gemini", "Claude", "DeepSeek", "Kimi", "GLM")
+BUILTIN = "内置 Agent"
+MEMBER_NAMES = (*NAMES, BUILTIN)
 _CLI = {"GPT": ("codex", "@openai/codex"), "Gemini": ("gemini", "@google/gemini-cli"),
         "Claude": ("claude", "@anthropic-ai/claude-code"), "Kimi": ("kimi", "@moonshot-ai/kimi-code")}
 ACCOUNT_NAMES = tuple(name for name in NAMES if name in _CLI or name in EXTRA_ACCOUNTS)
@@ -254,6 +256,11 @@ def _api(agent, model, key, prompt):
 
 def call(agent, config, prompt):
     """Send a single independent turn; the engine supplies shared history."""
+    if agent == BUILTIN:
+        if config.get("mode") != "api" or config.get("provider") not in NAMES:
+            raise ProviderError("请为内置 Agent 绑定一个有效的 API 账号。")
+        from lite_agent import team_call
+        return team_call(config, prompt)
     if agent not in NAMES or config.get("mode") not in {"account","api"}:
         raise ProviderError("请选择有效的成员和接入方式。")
     model = (config.get("model") or "").strip()

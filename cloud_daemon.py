@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 
-from providers import NAMES
+from providers import BUILTIN, MEMBER_NAMES, NAMES
 
 
 ACTIVE = {"starting", "running", "stopping"}
@@ -65,21 +65,26 @@ def checked(db, folder):
 
 
 def validate_configs(configs, members):
-    if not isinstance(configs, dict) or not 1 <= len(configs) <= len(NAMES):
+    if not isinstance(configs, dict) or not 1 <= len(configs) <= len(MEMBER_NAMES):
         raise ValueError("请选择要在服务器运行的 API 成员")
     clean = {}
     for name, cfg in configs.items():
-        if name not in members or name not in NAMES or not isinstance(cfg, dict) or cfg.get("mode") != "api":
+        if name not in members or name not in MEMBER_NAMES or not isinstance(cfg, dict) or cfg.get("mode") != "api":
             raise ValueError("服务器只接受当前房间中的 API 成员")
+        provider = cfg.get("provider") if name == BUILTIN else name
+        if provider not in NAMES:
+            raise ValueError("内置 Agent 的 API 平台无效")
         model, key = cfg.get("model"), cfg.get("key")
         if not isinstance(model, str):
             raise ValueError("请填写 API 模型 ID")
-        model = model.strip().removeprefix("models/") if name == "Gemini" else model.strip()
+        model = model.strip().removeprefix("models/") if provider == "Gemini" else model.strip()
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,160}", model):
             raise ValueError("API 模型 ID 格式无效")
         if not isinstance(key, str) or not re.fullmatch(r"[!-~]{1,4096}", key):
             raise ValueError("请为服务器成员提供有效 API Key")
         clean[name] = dict(mode="api", model=model, key=key)
+        if name == BUILTIN:
+            clean[name]["provider"] = provider
     return clean
 
 

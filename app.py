@@ -2,11 +2,14 @@
 import json
 import os
 import queue
+import sqlite3
 import threading
 from collections import deque
 from mobile import Monitor, device_key, saved_address
 from pairing_ui import PairingWindow
 from cloud_ui import CloudPanel
+from lite_ui import LitePanel
+from account_store import AccountStore
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -14,7 +17,7 @@ from tkinter.scrolledtext import ScrolledText
 
 from engine import Job
 from extra_accounts import EXTRA_ACCOUNTS
-from providers import ACCOUNT_NAMES, ENV_KEYS, NAMES, call, launch_login
+from providers import ACCOUNT_NAMES, BUILTIN, ENV_KEYS, MEMBER_NAMES, NAMES, call, launch_login
 
 
 DEFAULT_MEMBERS = ("GPT", "Gemini")
@@ -58,6 +61,8 @@ class Desk:
         self.job = None
         self.active_checks = set()
         self.forms = {}
+        self._account_store = None
+        self.profile_bindings = {}
         self.cancel_pending = False
         self.project = tk.StringVar()
         self.status = tk.StringVar(value="准备就绪")
@@ -78,6 +83,8 @@ class Desk:
         self._team_view()
         self.cloud = CloudPanel(self.tabs, self)
         self.tabs.add(self.cloud, text="云服务器")
+        self.lite = LitePanel(self.tabs, self)
+        self.tabs.add(self.lite, text="内置 Agent 与账号")
         self._controls()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.after(100, self._poll)
@@ -197,12 +204,12 @@ class Desk:
 
     def _team_view(self):
         ttk.Label(self.team, text="任务成员", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(self.team, text="选择 2 至 6 位成员参与本次协作。", style="Hint.TLabel").pack(anchor="w")
+        ttk.Label(self.team, text="选择 2 至 7 位成员。内置 Agent 使用「内置 Agent 与账号」中绑定的 API 账号。", style="Hint.TLabel").pack(anchor="w")
         roster = ttk.Frame(self.team)
         roster.pack(anchor="w", pady=(4, 8))
         self.member_vars = {}
         self.team_controls = []
-        for name in NAMES:
+        for name in MEMBER_NAMES:
             member = tk.BooleanVar(value=name in DEFAULT_MEMBERS)
             self.member_vars[name] = member
             button = ttk.Checkbutton(roster, text=name, variable=member)
@@ -264,6 +271,54 @@ class Desk:
                 var.trace_add("write", lambda *_args, n=name: self._changed(n))
             self._changed(name)
 
+        self.builtin_binding = tk.StringVar(value="内置 Agent 尚未绑定团队账号")
+        binding = ttk.Frame(self.team)
+        binding.pack(fill="x", pady=(4, 0))
+        ttk.Label(binding, textvariable=self.builtin_binding).pack(side="left")
+        ttk.Button(binding, text="选择账号…", command=lambda: self.tabs.select(self.lite)).pack(side="right")
+
+    @property
+    def account_store(self):
+        if self._account_store is None:
+            self._account_store = AccountStore()
+        return self._account_store
+
+    def apply_profile(self, profile_id, builtin=True):
+        profile = next((row for row in self.account_store.list_profiles() if row["id"] == profile_id), None)
+        if profile is None:
+            raise ValueError("账号已删除，请重新选择。")
+        member = BUILTIN if builtin else profile["provider"]
+        label = f"{profile['name']} · {profile['provider']}"
+        if builtin:
+            self.builtin_binding.set("内置 Agent 团队账号：" + label)
+        else:
+            form = self.forms[member]
+            form["mode"].set("API Key")
+            form["model"].set(profile["model"])
+            form["key"].set("")
+            form["info"].set("已绑定账号：" + label)
+        self.profile_bindings[member] = profile_id
+        if self.job is None and not self.running:
+            self.member_vars[member].set(True)
+
+    def refresh_bound_profiles(self, profiles):
+        records = {row["id"]: row for row in profiles}
+        for member, profile_id in list(self.profile_bindings.items()):
+            row = records.get(profile_id)
+            if row is None or member != BUILTIN and row["provider"] != member:
+                # Keep the invalid binding until the user rebinds or edits this member.
+                # A deleted account must never silently fall back to an environment key.
+                label = "绑定已失效，请重新选择账号"
+            else:
+                label = f"{row['name']} · {row['provider']} / {row['model']}"
+            if member == BUILTIN:
+                self.builtin_binding.set("内置 Agent 团队账号：" + label)
+            else:
+                if row is not None and row["provider"] == member:
+                    self.forms[member]["model"].set(row["model"])
+                    self.profile_bindings[member] = profile_id
+                self.forms[member]["info"].set(label)
+
     def _members(self):
         return [name for name, selected in self.member_vars.items() if selected.get()]
 
@@ -284,6 +339,7 @@ class Desk:
             widget.configure(state="normal" if editable else "disabled")
 
     def _changed(self, name):
+        self.profile_bindings.pop(name, None)
         form = self.forms[name]
         account = form["mode"].get() == "账号登录"
         form["entry"].configure(state="disabled" if account else "normal")
@@ -298,6 +354,16 @@ class Desk:
                             bg=WHITE, relief="solid", borderwidth=1, padx=6, pady=4, undo=True)
 
     def _config(self, name):
+        if name in self.profile_bindings:
+            try:
+                cfg = dict(self.account_store.resolve(self.profile_bindings[name]))
+            except (ValueError, LookupError, OSError, RuntimeError, sqlite3.Error) as error:
+                raise ValueError("绑定的账号不可用，请在「内置 Agent 与账号」检查设置或重新绑定。") from error
+            if name != BUILTIN and cfg.pop("provider") != name:
+                raise ValueError("账号的模型平台已改变，请重新绑定对应成员。")
+            return cfg
+        if name == BUILTIN:
+            raise ValueError("请在「内置 Agent 与账号」中选择 API 账号，并将它用于团队内置 Agent。")
         fields = self.forms[name]
         mode = MODES[fields["mode"].get()]
         model = "" if mode == "account" and name in EXTRA_ACCOUNTS else fields["model"].get().strip()
@@ -518,6 +584,7 @@ class Desk:
 
     def _poll(self):
         self.cloud.poll()
+        self.lite.poll()
         while True:
             try:
                 kind, value = self.queue.get_nowait()
@@ -557,6 +624,7 @@ class Desk:
             return
         if self.monitor:
             self.monitor.close()
+        self.lite.close()
         self.cloud.disconnect()
         self.root.destroy()
 

@@ -12,7 +12,7 @@ from cloud_room import snapshot, validated_files
 from cloud_ssh import CloudSSH
 from cloud_worker import run_team
 from engine import hidden
-from providers import ENV_KEYS, NAMES
+from providers import BUILTIN, ENV_KEYS, MEMBER_NAMES
 
 
 STATUS = {"active": "进行中", "complete": "已完成", "blocked": "待整改",
@@ -59,10 +59,15 @@ def server_configs(configs):
     for name, cfg in configs.items():
         if cfg["mode"] != "api":
             raise ValueError(f"{name} 使用本机账号。请用「本机参与」，或先在「成员与连接」改为 API Key。")
-        key = (cfg["key"] or os.environ.get(ENV_KEYS[name], "")).strip()
+        provider = cfg.get("provider") if name == BUILTIN else name
+        if provider not in ENV_KEYS:
+            raise ValueError("内置 Agent 需要绑定有效的 API 平台。")
+        key = (cfg["key"] or os.environ.get(ENV_KEYS[provider], "")).strip()
         if not key:
-            raise ValueError(f"请为 {name} 填写 API Key 或设置 {ENV_KEYS[name]}。")
+            raise ValueError(f"请为 {name} 填写 API Key 或设置 {ENV_KEYS[provider]}。")
         result[name] = dict(mode="api", model=cfg["model"], key=key)
+        if name == BUILTIN:
+            result[name]["provider"] = provider
     return result
 
 
@@ -118,7 +123,7 @@ class CloudPanel(ttk.Frame):
         members.grid(row=4, sticky="w", pady=(7, 3))
         ttk.Label(members, text="本次提供的成员").pack(side="left", padx=(0, 8))
         self.checks = {}
-        for name in NAMES:
+        for name in MEMBER_NAMES:
             self.selected[name] = tk.BooleanVar(value=False)
             box = ttk.Checkbutton(members, text=name, variable=self.selected[name], command=self._controls)
             box.pack(side="left", padx=3)
@@ -283,7 +288,9 @@ class CloudPanel(ttk.Frame):
                 self._error(error)
                 return
             target = f"{self.conn.user}@{self.conn.host}:{self.conn.port}"
-            if not messagebox.askyesno("授权服务器使用 API", f"将 {'、'.join(configs)} 的 API Key 经 SSH 发送到 {target}，"
+            labels = [f"{name}（{cfg['provider']} / {cfg['model']}）" if name == BUILTIN else name
+                      for name, cfg in configs.items()]
+            if not messagebox.askyesno("授权服务器使用 API", f"将 {'、'.join(labels)} 的 API Key 经 SSH 发送到 {target}，"
                     "供该项目账号的后台进程在内存中调用模型。关闭电脑后仍会使用相应 API 额度。启动这些成员？", parent=self):
                 return
             self._action("worker", lambda: rpc("start_worker", room=room, configs=configs))
