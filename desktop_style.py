@@ -4,18 +4,18 @@ from tkinter import font as tkfont, ttk
 
 
 FONT = "Microsoft YaHei UI"
-BG = "#f5f5f3"
+BG = "#f3f4f6"
 SURFACE = "#ffffff"
-FIELD = "#fbfbfa"
-INK = "#202123"
-MUTED = "#585b61"
-BORDER = "#dededb"
-SUBTLE = "#efefed"
-ACCENT = "#252627"
-RAIL = "#1c1d1f"
-RAIL_TEXT = "#d2d3d5"
-RAIL_SUB = "#a0a2a7"
-RAIL_ACTIVE = "#38393c"
+FIELD = "#f8f9fb"
+INK = "#18191e"
+MUTED = "#60677a"
+BORDER = "#d8dbe4"
+SUBTLE = "#eaecf2"
+ACCENT = "#1a1d24"
+RAIL = "#16202e"
+RAIL_TEXT = "#c8d4e3"
+RAIL_SUB = "#8fa3ba"
+RAIL_ACTIVE = "#1e2f47"
 
 
 def configure(root):
@@ -33,48 +33,59 @@ def configure(root):
     style.configure("TFrame", background=SURFACE)
     style.configure("TLabel", background=SURFACE, foreground=INK)
     style.configure("Hint.TLabel", foreground=MUTED, font=(FONT, 9))
-    style.configure("Title.TLabel", font=(FONT, 19, "bold"))
-    style.configure("Section.TLabel", font=(FONT, 12, "bold"))
-    style.configure("TButton", width=0, background=SURFACE, foreground=INK, padding=(9, 5),
-                    borderwidth=1, relief="raised", focusthickness=1, focuscolor=MUTED)
-    style.map("TButton", background=[("disabled", BG), ("pressed", BORDER), ("active", SUBTLE)],
-              foreground=[("disabled", "#75767a")], bordercolor=[("focus", MUTED), ("active", "#a5a6a7")])
+    style.configure("Title.TLabel", font=(FONT, 18, "bold"))
+    style.configure("Section.TLabel", font=(FONT, 11, "bold"), foreground=MUTED)
+    style.configure("TButton", width=0, background=SURFACE, foreground=INK, padding=(10, 5),
+                    borderwidth=1, relief="raised", focusthickness=1, focuscolor=BORDER)
+    style.map("TButton",
+              background=[("disabled", BG), ("pressed", SUBTLE), ("active", SUBTLE)],
+              foreground=[("disabled", "#8a8d96")],
+              bordercolor=[("focus", MUTED), ("active", MUTED)])
     style.configure("Accent.TButton", background=ACCENT, foreground=SURFACE, bordercolor=ACCENT,
-                    lightcolor=ACCENT, darkcolor=ACCENT, focuscolor=SURFACE, padding=(12, 7))
+                    lightcolor=ACCENT, darkcolor=ACCENT, focuscolor=SURFACE, padding=(13, 7),
+                    font=(FONT, 10, "bold"))
     style.map("Accent.TButton",
-              background=[("disabled", "#e7e7e5"), ("pressed", "#111214"), ("active", "#404145")],
-              foreground=[("disabled", "#686a6e")],
+              background=[("disabled", "#e2e4ea"), ("pressed", "#0d0f14"), ("active", "#2e3240")],
+              foreground=[("disabled", "#8a8d96")],
               bordercolor=[("disabled", BORDER), ("!disabled", ACCENT)])
+    style.configure("Danger.TButton", background=SURFACE, foreground="#b91c1c", bordercolor="#fca5a5",
+                    lightcolor=SURFACE, darkcolor=SURFACE, padding=(10, 5))
+    style.map("Danger.TButton",
+              background=[("disabled", BG), ("pressed", "#fef2f2"), ("active", "#fff5f5")],
+              foreground=[("disabled", "#8a8d96"), ("active", "#991b1b")],
+              bordercolor=[("active", "#f87171")])
     for name in ("TEntry", "TCombobox"):
-        style.configure(name, fieldbackground=FIELD, padding=(6, 4), arrowsize=12)
+        style.configure(name, fieldbackground=FIELD, padding=(7, 5), arrowsize=12)
         style.map(name, fieldbackground=[("disabled", BG), ("readonly", FIELD)],
                   foreground=[("disabled", "#77797c")], bordercolor=[("focus", MUTED)])
     for name in ("TCheckbutton", "TRadiobutton"):
-        style.configure(name, background=SURFACE, padding=(1, 3), indicatorbackground=FIELD, indicatorforeground=INK)
-        style.map(name, background=[("active", SUBTLE)], foreground=[("disabled", "#77797c")])
-    style.configure("TNotebook", borderwidth=0, background=SURFACE, tabmargins=(0, 0, 0, 3))
-    style.configure("TNotebook.Tab", background=BG, foreground=MUTED, padding=(8, 5))
-    style.map("TNotebook.Tab", background=[("selected", ACCENT), ("active", SUBTLE)],
-              foreground=[("selected", SURFACE)])
+        style.configure(name, background=SURFACE, padding=(2, 3),
+                        indicatorbackground=FIELD, indicatorforeground=INK)
+        style.map(name, background=[("active", SUBTLE)], foreground=[("disabled", "#8a8d96")])
+    style.configure("TNotebook", borderwidth=0, background=BG, tabmargins=(0, 0, 0, 0))
+    style.configure("TNotebook.Tab", background=BG, foreground=MUTED, padding=(10, 6))
+    style.map("TNotebook.Tab",
+              background=[("selected", SURFACE), ("active", SUBTLE)],
+              foreground=[("selected", INK), ("active", INK)])
     style.layout("Pages.TNotebook", [("Notebook.client", {"sticky": "nswe"})])
     style.layout("Pages.TNotebook.Tab", [])
     style.configure("Pages.TNotebook", borderwidth=0, background=BG, tabmargins=0, tabposition="n")
+    style.configure("TSeparator", background=BORDER)
 
 
 def style_text(widget, *, editor=False):
     widget.configure(bg=FIELD if editor else SURFACE, fg=INK, insertbackground=INK,
-                     selectbackground="#dce3ed", selectforeground=INK, relief="flat", borderwidth=0,
+                     selectbackground="#d0ddf5", selectforeground=INK, relief="flat", borderwidth=0,
                      highlightthickness=1 if editor else 0, highlightbackground=BORDER, highlightcolor=MUTED,
-                     font=(FONT, 10), padx=10, pady=7, spacing1=1, spacing3=2)
+                     font=(FONT, 10), padx=10, pady=8, spacing1=2, spacing3=3)
     if hasattr(widget, "vbar"):
         bar = widget.vbar
-        bar.configure(width=9, borderwidth=0, relief="flat", highlightthickness=0,
-                      troughcolor=BG, background=SUBTLE, activebackground=BORDER)
+        bar.configure(width=8, borderwidth=0, relief="flat", highlightthickness=0,
+                      troughcolor=BG, background="#c5cad6", activebackground=MUTED)
 
         def scroll(first, last):
             if float(first) > 0 or float(last) < 1:
                 if not bar.winfo_manager():
-                    # ScrolledText.__str__ identifies the wrapper, not its inner Text.
                     bar.pack(side="right", fill="y", before=widget._w)
             else:
                 bar.pack_forget()

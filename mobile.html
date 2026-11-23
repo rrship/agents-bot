@@ -1,41 +1,316 @@
 <!doctype html>
-<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#173f3b"><title>Agents Bot · 手机监控</title>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" media="(prefers-color-scheme:dark)" content="#0d1b2a">
+<meta name="theme-color" media="(prefers-color-scheme:light)" content="#f0f4f8">
+<title>Agents Bot · 监控</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#f7f7f2;color:#182f2c;font:16px/1.55 system-ui,sans-serif}header{position:sticky;top:0;z-index:1;background:#173f3b;color:white;padding:14px max(20px,calc((100vw - 680px)/2));display:flex;justify-content:space-between;align-items:center}header b{font-size:19px}#connection{font-size:13px;color:#d4eae2}main{max-width:720px;margin:auto;padding:24px 20px 64px}section{background:white;border:1px solid #d9e1da;border-radius:16px;padding:20px}small{color:#526c65}h1{margin:12px 0;font-size:22px;line-height:1.4;overflow-wrap:anywhere;white-space:pre-wrap}#status{float:right;color:#145a47;background:#e3f3eb;border-radius:16px;padding:2px 10px;font-size:13px}#members{display:flex;flex-wrap:wrap;gap:6px}#members span{font-size:13px;background:#eff3ef;border-radius:6px;padding:3px 8px}.bar{display:flex;align-items:center;justify-content:space-between;margin:24px 0 8px}h2{font-size:17px;margin:0}button{font:inherit;color:#285d51;background:white;border:1px solid #cad8d1;padding:7px 12px;border-radius:10px}article{padding:14px 0;border-bottom:1px solid #dae1da;overflow-wrap:anywhere}article b{color:#25614f;font-size:13px}article p{margin:4px 0;white-space:pre-wrap}#empty{color:#60716a}
-</style>
-<header><b>Agents Bot</b><span id="connection" role="status">正在连接…</span></header>
-<main><section><small>电脑任务</small><span id="status">等待连接</span><h1 id="goal">等待电脑同步</h1><div id="members"></div></section>
-<div class="bar"><h2>协作动态</h2><button id="order">最新在前 ↓</button></div><div id="events"></div><p id="empty">等待任务动态…</p></main>
-<script>
-const el=id=>document.getElementById(id);
-let key=location.hash.slice(1), latest=true, entries=[], previous='';
-function draw(){
- const fragment=document.createDocumentFragment();
- for(const text of latest?[...entries].reverse():entries){
-  const article=document.createElement('article'), title=document.createElement('b'), body=document.createElement('p');
-  const m=text.match(/^(.{1,100}?)\s+\[([^\]]+)\]\s*([\s\S]*)$/);
-  title.textContent=m?m[1]+' · '+m[2]:'工作台';body.textContent=m?m[3]:text;
-  article.append(title,body);fragment.append(article);
- }
- el('events').replaceChildren(fragment);el('empty').hidden=entries.length>0;
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1b2a;
+  --surface:#132033;
+  --surface2:#192840;
+  --border:#1e3250;
+  --text:#ddeaf7;
+  --muted:#6b8db0;
+  --accent:#3b96f5;
+  --accent-glow:rgba(59,150,245,.18);
+  --ok:#34d399;
+  --ok-glow:rgba(52,211,153,.2);
+  --err:#f87171;
+  --warn:#fbbf24;
+  --radius:16px;
+  --radius-sm:10px;
+  --shadow:0 8px 32px rgba(0,0,0,.45);
+  --shadow-sm:0 2px 12px rgba(0,0,0,.3);
 }
-el('order').onclick=()=>{latest=!latest;el('order').textContent=latest?'最新在前 ↓':'最早在前 ↑';draw()};
-async function sync(){
- if(!key){el('connection').textContent='请用电脑上的完整连接地址打开';return}
- const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),7000);
- try{
-  const response=await fetch('/progress',{headers:{Authorization:'Bearer '+key},signal:controller.signal});
-  if(response.status===403){el('connection').textContent='连接已失效，请重新配对';return}
-  if(!response.ok)throw Error();
-  const raw=await response.text();if(raw!==previous){
-   const s=JSON.parse(raw);el('goal').textContent=s.goal||'等待开始任务';el('status').textContent=s.status||'就绪';
-   el('members').replaceChildren(...(s.members||[]).map(n=>{const tag=document.createElement('span');tag.textContent=n+(n===s.leader?' · 组长':'');return tag}));
-   entries=s.events||[];draw();previous=raw;
+@media(prefers-color-scheme:light){
+  :root{
+    --bg:#f0f4f8;
+    --surface:#ffffff;
+    --surface2:#f7fafc;
+    --border:#dde6ef;
+    --text:#1a2d45;
+    --muted:#5a7a99;
+    --accent:#2563eb;
+    --accent-glow:rgba(37,99,235,.1);
+    --ok:#059669;
+    --ok-glow:rgba(5,150,105,.1);
+    --err:#dc2626;
+    --warn:#d97706;
+    --shadow:0 8px 32px rgba(0,0,0,.08);
+    --shadow-sm:0 2px 12px rgba(0,0,0,.06);
   }
-  el('connection').textContent='已同步 '+new Date().toLocaleTimeString();
- }catch{el('connection').textContent='电脑离线 · 正在重连'}
- finally{clearTimeout(timer)}
- setTimeout(sync,2000)
 }
+
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg);color:var(--text);
+  font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;
+  min-height:100dvh;
+}
+
+/* ── Header ── */
+header{
+  position:sticky;top:0;z-index:20;
+  background:color-mix(in srgb,var(--bg) 85%,transparent);
+  backdrop-filter:blur(20px) saturate(160%);
+  -webkit-backdrop-filter:blur(20px) saturate(160%);
+  border-bottom:1px solid var(--border);
+  padding:13px max(20px,env(safe-area-inset-left));
+  display:flex;align-items:center;gap:10px;
+}
+.logo{font-size:17px;font-weight:700;letter-spacing:-.4px}
+.logo em{font-style:normal;color:var(--accent)}
+#conn-wrap{margin-left:auto;display:flex;align-items:center;gap:7px}
+.pulse-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--muted);flex-shrink:0;
+  transition:background .4s,box-shadow .4s;
+}
+.pulse-dot.ok{
+  background:var(--ok);
+  animation:heartbeat 2.4s ease infinite;
+}
+.pulse-dot.err{background:var(--err)}
+@keyframes heartbeat{
+  0%,100%{box-shadow:0 0 0 0 var(--ok-glow)}
+  50%{box-shadow:0 0 0 8px transparent}
+}
+#conn-text{font-size:12px;color:var(--muted)}
+
+/* ── Layout ── */
+main{
+  max-width:700px;margin:0 auto;
+  padding:20px 16px calc(80px + env(safe-area-inset-bottom));
+}
+
+/* ── Task card ── */
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow-sm);
+  padding:20px;
+  margin-bottom:14px;
+}
+.card-label{
+  font-size:11px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:10px;
+}
+#goal{
+  font-size:18px;font-weight:600;line-height:1.45;
+  overflow-wrap:anywhere;white-space:pre-wrap;
+  margin-bottom:16px;min-height:26px;
+}
+.task-foot{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+
+/* Status badge */
+.badge{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;font-weight:600;padding:4px 11px;
+  border-radius:20px;border:1px solid transparent;
+  background:color-mix(in srgb,var(--ok) 15%,transparent);
+  color:var(--ok);border-color:color-mix(in srgb,var(--ok) 25%,transparent);
+}
+.badge::before{
+  content:'';width:5px;height:5px;border-radius:50%;background:currentColor;
+}
+
+/* Members */
+#members{display:flex;flex-wrap:wrap;gap:6px}
+.member{
+  font-size:12px;padding:3px 10px;border-radius:6px;
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--muted);display:inline-flex;align-items:center;gap:5px;
+  transition:border-color .2s;
+}
+.member.leader{
+  color:var(--accent);
+  border-color:color-mix(in srgb,var(--accent) 35%,transparent);
+  background:var(--accent-glow);
+}
+.member::before{
+  content:'';width:5px;height:5px;border-radius:50%;
+  background:currentColor;opacity:.6;
+}
+
+/* ── Events bar ── */
+.events-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  margin:18px 0 12px;
+}
+.events-title{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.04em}
+.sort-btn{
+  font:12px system-ui,sans-serif;color:var(--muted);cursor:pointer;
+  background:var(--surface);border:1px solid var(--border);
+  padding:5px 11px;border-radius:7px;display:flex;align-items:center;gap:4px;
+  transition:color .15s,border-color .15s;
+}
+.sort-btn:hover{color:var(--text);border-color:var(--accent)}
+
+/* ── Event items ── */
+#events{display:flex;flex-direction:column;gap:8px}
+.ev{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:13px 15px;
+  animation:fade-up .22s ease both;
+  overflow-wrap:anywhere;
+  transition:border-color .2s;
+}
+.ev:hover{border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+@keyframes fade-up{
+  from{opacity:0;transform:translateY(6px)}
+  to{opacity:1;transform:none}
+}
+.ev-head{
+  display:flex;align-items:baseline;justify-content:space-between;
+  gap:8px;margin-bottom:5px;
+}
+.ev-agent{font-size:12px;font-weight:600;color:var(--accent)}
+.ev-time{font-size:11px;color:var(--muted);white-space:nowrap}
+.ev-body{font-size:14px;line-height:1.55;white-space:pre-wrap}
+.ev-body:empty{display:none}
+
+/* ── Empty state ── */
+#empty{
+  text-align:center;padding:56px 20px;
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+}
+.empty-icon{font-size:40px;opacity:.35;line-height:1}
+.empty-txt{font-size:14px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Agents<em>Bot</em></div>
+  <div id="conn-wrap">
+    <span class="pulse-dot" id="dot"></span>
+    <span id="conn-text">正在连接…</span>
+  </div>
+</header>
+
+<main>
+  <div class="card">
+    <div class="card-label">当前任务</div>
+    <div id="goal">等待电脑同步</div>
+    <div class="task-foot">
+      <span class="badge" id="status">等待连接</span>
+      <div id="members"></div>
+    </div>
+  </div>
+
+  <div class="events-bar">
+    <span class="events-title">协作动态</span>
+    <button class="sort-btn" id="order">最新在前 ↓</button>
+  </div>
+
+  <div id="events"></div>
+  <div id="empty">
+    <span class="empty-icon">📋</span>
+    <span class="empty-txt">等待任务动态…</span>
+  </div>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+let key=location.hash.slice(1),latest=true,entries=[],previous='';
+
+function parseEvent(text){
+  const m=text.match(/^([\s\S]{1,120}?)\s+\[([^\]]+)\]\s*([\s\S]*)$/);
+  return m?{agent:m[1],time:m[2],body:m[3].trim()}:{agent:'工作台',time:'',body:text};
+}
+
+function draw(){
+  const list=latest?[...entries].reverse():entries;
+  if(!list.length){
+    $('events').innerHTML='';
+    $('empty').hidden=false;
+    return;
+  }
+  $('empty').hidden=true;
+  const frag=document.createDocumentFragment();
+  list.forEach(text=>{
+    const {agent,time,body}=parseEvent(text);
+    const div=document.createElement('div');
+    div.className='ev';
+    const head=document.createElement('div');
+    head.className='ev-head';
+    const agentEl=document.createElement('span');
+    agentEl.className='ev-agent';
+    agentEl.textContent=agent;
+    const timeEl=document.createElement('span');
+    timeEl.className='ev-time';
+    timeEl.textContent=time;
+    head.append(agentEl,timeEl);
+    const bodyEl=document.createElement('div');
+    bodyEl.className='ev-body';
+    bodyEl.textContent=body;
+    div.append(head,bodyEl);
+    frag.append(div);
+  });
+  $('events').replaceChildren(frag);
+}
+
+$('order').onclick=()=>{
+  latest=!latest;
+  $('order').textContent=latest?'最新在前 ↓':'最早在前 ↑';
+  draw();
+};
+
+function setStatus(state){
+  $('dot').className='pulse-dot'+(state==='ok'?' ok':state==='err'?' err':'');
+}
+
+async function sync(){
+  if(!key){
+    $('conn-text').textContent='请用电脑上的完整连接地址打开';
+    setStatus('err');
+    return;
+  }
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),7000);
+  try{
+    const r=await fetch('/progress',{
+      headers:{Authorization:'Bearer '+key},
+      signal:ctrl.signal,
+    });
+    if(r.status===403){
+      $('conn-text').textContent='连接已失效，请重新配对';
+      setStatus('err');
+      return;
+    }
+    if(!r.ok)throw Error();
+    const raw=await r.text();
+    if(raw!==previous){
+      const s=JSON.parse(raw);
+      $('goal').textContent=s.goal||'等待开始任务';
+      $('status').textContent=s.status||'就绪';
+      $('members').replaceChildren(...(s.members||[]).map(n=>{
+        const el=document.createElement('span');
+        el.className='member'+(n===s.leader?' leader':'');
+        el.textContent=n+(n===s.leader?' · 组长':'');
+        return el;
+      }));
+      entries=s.events||[];
+      draw();
+      previous=raw;
+    }
+    $('conn-text').textContent='已同步 '+new Date().toLocaleTimeString();
+    setStatus('ok');
+  }catch{
+    $('conn-text').textContent='电脑离线 · 重连中';
+    setStatus('err');
+  }finally{
+    clearTimeout(timer);
+  }
+  setTimeout(sync,2000);
+}
+
 sync();
-</script></html>
+</script>
+</body>
+</html>
