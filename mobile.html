@@ -3,88 +3,109 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" media="(prefers-color-scheme:dark)" content="#0d1b2a">
-<meta name="theme-color" media="(prefers-color-scheme:light)" content="#f0f4f8">
+<meta name="theme-color" content="#060d1c">
 <title>Agents Bot · 监控</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+
 :root{
-  --bg:#0d1b2a;
-  --surface:#132033;
-  --surface2:#192840;
-  --border:#1e3250;
-  --text:#ddeaf7;
-  --muted:#6b8db0;
-  --accent:#3b96f5;
-  --accent-glow:rgba(59,150,245,.18);
+  --bg:#060d1c;
+  --grid:#0d1a2e;
+  --surface:#0b1628;
+  --surface2:#0f1f38;
+  --border:#1a3050;
+  --border-glow:#1e4a80;
+  --text:#c8dff5;
+  --muted:#4d6b8a;
+  --cyan:#22d3ee;
+  --cyan-dim:rgba(34,211,238,.12);
+  --cyan-glow:rgba(34,211,238,.35);
+  --blue:#3b82f6;
   --ok:#34d399;
-  --ok-glow:rgba(52,211,153,.2);
+  --ok-dim:rgba(52,211,153,.12);
+  --ok-glow:rgba(52,211,153,.5);
   --err:#f87171;
   --warn:#fbbf24;
-  --radius:16px;
-  --radius-sm:10px;
-  --shadow:0 8px 32px rgba(0,0,0,.45);
-  --shadow-sm:0 2px 12px rgba(0,0,0,.3);
-}
-@media(prefers-color-scheme:light){
-  :root{
-    --bg:#f0f4f8;
-    --surface:#ffffff;
-    --surface2:#f7fafc;
-    --border:#dde6ef;
-    --text:#1a2d45;
-    --muted:#5a7a99;
-    --accent:#2563eb;
-    --accent-glow:rgba(37,99,235,.1);
-    --ok:#059669;
-    --ok-glow:rgba(5,150,105,.1);
-    --err:#dc2626;
-    --warn:#d97706;
-    --shadow:0 8px 32px rgba(0,0,0,.08);
-    --shadow-sm:0 2px 12px rgba(0,0,0,.06);
-  }
+  --radius:14px;
+  --radius-sm:9px;
 }
 
-html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%}
 body{
-  background:var(--bg);color:var(--text);
-  font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;
   min-height:100dvh;
+  background-color:var(--bg);
+  background-image:
+    linear-gradient(var(--grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:40px 40px;
+  color:var(--text);
+  font:14px/1.65 'SF Pro Text',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+
+/* ── Scanline overlay ── */
+body::before{
+  content:'';
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:repeating-linear-gradient(
+    0deg,
+    rgba(0,0,0,.04) 0px,
+    rgba(0,0,0,.04) 1px,
+    transparent 1px,
+    transparent 3px
+  );
 }
 
 /* ── Header ── */
 header{
-  position:sticky;top:0;z-index:20;
-  background:color-mix(in srgb,var(--bg) 85%,transparent);
-  backdrop-filter:blur(20px) saturate(160%);
-  -webkit-backdrop-filter:blur(20px) saturate(160%);
+  position:sticky;top:0;z-index:30;
+  background:rgba(6,13,28,.88);
+  backdrop-filter:blur(24px) saturate(180%);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
   border-bottom:1px solid var(--border);
-  padding:13px max(20px,env(safe-area-inset-left));
-  display:flex;align-items:center;gap:10px;
+  padding:12px max(18px,env(safe-area-inset-left));
+  display:flex;align-items:center;gap:12px;
 }
-.logo{font-size:17px;font-weight:700;letter-spacing:-.4px}
-.logo em{font-style:normal;color:var(--accent)}
-#conn-wrap{margin-left:auto;display:flex;align-items:center;gap:7px}
-.pulse-dot{
+.logo{
+  font-size:16px;font-weight:700;letter-spacing:.5px;
+  font-family:'SF Mono','Cascadia Code','Consolas',monospace;
+  color:var(--text);
+}
+.logo em{font-style:normal;color:var(--cyan)}
+.logo span{color:var(--muted);font-weight:400}
+
+/* Connection status */
+#conn-wrap{margin-left:auto;display:flex;align-items:center;gap:8px}
+.dot{
   width:8px;height:8px;border-radius:50%;
   background:var(--muted);flex-shrink:0;
   transition:background .4s,box-shadow .4s;
 }
-.pulse-dot.ok{
+.dot.ok{
   background:var(--ok);
-  animation:heartbeat 2.4s ease infinite;
+  animation:pulse-ok 2s ease-in-out infinite;
 }
-.pulse-dot.err{background:var(--err)}
-@keyframes heartbeat{
-  0%,100%{box-shadow:0 0 0 0 var(--ok-glow)}
-  50%{box-shadow:0 0 0 8px transparent}
+.dot.err{
+  background:var(--err);
+  animation:pulse-err 1s ease-in-out infinite;
 }
-#conn-text{font-size:12px;color:var(--muted)}
+@keyframes pulse-ok{
+  0%,100%{box-shadow:0 0 0 0 var(--ok-glow),0 0 6px var(--ok-glow)}
+  50%{box-shadow:0 0 0 6px transparent,0 0 12px var(--ok-glow)}
+}
+@keyframes pulse-err{
+  0%,100%{box-shadow:0 0 4px var(--err)}
+  50%{box-shadow:0 0 10px var(--err)}
+}
+#conn-text{
+  font-size:11px;color:var(--muted);letter-spacing:.03em;
+  font-family:'SF Mono','Cascadia Code','Consolas',monospace;
+}
 
 /* ── Layout ── */
 main{
+  position:relative;z-index:1;
   max-width:700px;margin:0 auto;
-  padding:20px 16px calc(80px + env(safe-area-inset-bottom));
+  padding:20px 14px calc(80px + env(safe-area-inset-bottom));
 }
 
 /* ── Task card ── */
@@ -92,110 +113,172 @@ main{
   background:var(--surface);
   border:1px solid var(--border);
   border-radius:var(--radius);
-  box-shadow:var(--shadow-sm);
-  padding:20px;
+  padding:18px 20px;
   margin-bottom:14px;
+  position:relative;overflow:hidden;
+  box-shadow:0 0 0 1px rgba(34,211,238,.04),inset 0 1px 0 rgba(255,255,255,.04);
+  transition:border-color .3s;
+}
+.card::before{
+  content:'';position:absolute;
+  inset:0;border-radius:inherit;
+  background:linear-gradient(135deg,rgba(34,211,238,.04) 0%,transparent 60%);
+  pointer-events:none;
 }
 .card-label{
-  font-size:11px;font-weight:600;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--muted);margin-bottom:10px;
+  font-size:10px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--cyan);
+  margin-bottom:10px;
+  font-family:'SF Mono','Cascadia Code','Consolas',monospace;
+  opacity:.8;
 }
 #goal{
-  font-size:18px;font-weight:600;line-height:1.45;
+  font-size:17px;font-weight:600;line-height:1.5;
   overflow-wrap:anywhere;white-space:pre-wrap;
-  margin-bottom:16px;min-height:26px;
+  margin-bottom:16px;min-height:24px;color:var(--text);
 }
 .task-foot{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
 
 /* Status badge */
 .badge{
   display:inline-flex;align-items:center;gap:5px;
-  font-size:12px;font-weight:600;padding:4px 11px;
-  border-radius:20px;border:1px solid transparent;
-  background:color-mix(in srgb,var(--ok) 15%,transparent);
-  color:var(--ok);border-color:color-mix(in srgb,var(--ok) 25%,transparent);
+  font-size:11px;font-weight:700;padding:4px 12px;
+  border-radius:20px;
+  background:var(--ok-dim);
+  color:var(--ok);
+  border:1px solid rgba(52,211,153,.25);
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  font-family:'SF Mono','Cascadia Code','Consolas',monospace;
 }
 .badge::before{
   content:'';width:5px;height:5px;border-radius:50%;background:currentColor;
+  animation:pulse-ok 2s ease-in-out infinite;
 }
 
 /* Members */
 #members{display:flex;flex-wrap:wrap;gap:6px}
 .member{
   font-size:12px;padding:3px 10px;border-radius:6px;
-  background:var(--surface2);border:1px solid var(--border);
-  color:var(--muted);display:inline-flex;align-items:center;gap:5px;
-  transition:border-color .2s;
-}
-.member.leader{
-  color:var(--accent);
-  border-color:color-mix(in srgb,var(--accent) 35%,transparent);
-  background:var(--accent-glow);
+  background:var(--surface2);
+  border:1px solid var(--border);
+  color:var(--muted);
+  display:inline-flex;align-items:center;gap:5px;
+  transition:border-color .2s,color .2s;
 }
 .member::before{
   content:'';width:5px;height:5px;border-radius:50%;
-  background:currentColor;opacity:.6;
+  background:currentColor;opacity:.5;
+}
+.member.leader{
+  color:var(--cyan);
+  border-color:rgba(34,211,238,.3);
+  background:var(--cyan-dim);
 }
 
 /* ── Events bar ── */
 .events-bar{
   display:flex;align-items:center;justify-content:space-between;
-  margin:18px 0 12px;
+  margin:18px 0 10px;
 }
-.events-title{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.04em}
+.events-title{
+  font-size:11px;font-weight:700;letter-spacing:.1em;
+  color:var(--muted);text-transform:uppercase;
+  font-family:'SF Mono','Cascadia Code','Consolas',monospace;
+}
 .sort-btn{
-  font:12px system-ui,sans-serif;color:var(--muted);cursor:pointer;
-  background:var(--surface);border:1px solid var(--border);
-  padding:5px 11px;border-radius:7px;display:flex;align-items:center;gap:4px;
-  transition:color .15s,border-color .15s;
+  font-size:11px;font-family:'SF Mono','Cascadia Code','Consolas',monospace;
+  color:var(--muted);cursor:pointer;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  padding:5px 11px;border-radius:7px;
+  letter-spacing:.03em;
+  transition:color .15s,border-color .15s,box-shadow .15s;
 }
-.sort-btn:hover{color:var(--text);border-color:var(--accent)}
+.sort-btn:hover{
+  color:var(--cyan);
+  border-color:rgba(34,211,238,.4);
+  box-shadow:0 0 10px rgba(34,211,238,.15);
+}
 
 /* ── Event items ── */
-#events{display:flex;flex-direction:column;gap:8px}
+#events{display:flex;flex-direction:column;gap:7px}
 .ev{
-  background:var(--surface);border:1px solid var(--border);
-  border-radius:var(--radius-sm);padding:13px 15px;
-  animation:fade-up .22s ease both;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-left:3px solid var(--cyan);
+  border-radius:var(--radius-sm);
+  padding:12px 14px;
+  animation:slide-in .2s ease both;
   overflow-wrap:anywhere;
-  transition:border-color .2s;
+  transition:border-color .2s,box-shadow .2s;
+  position:relative;
 }
-.ev:hover{border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
-@keyframes fade-up{
-  from{opacity:0;transform:translateY(6px)}
+.ev:hover{
+  border-color:var(--border-glow);
+  border-left-color:var(--cyan);
+  box-shadow:0 0 16px rgba(34,211,238,.08),inset 0 0 20px rgba(34,211,238,.03);
+}
+@keyframes slide-in{
+  from{opacity:0;transform:translateX(-6px)}
   to{opacity:1;transform:none}
 }
 .ev-head{
   display:flex;align-items:baseline;justify-content:space-between;
   gap:8px;margin-bottom:5px;
 }
-.ev-agent{font-size:12px;font-weight:600;color:var(--accent)}
-.ev-time{font-size:11px;color:var(--muted);white-space:nowrap}
-.ev-body{font-size:14px;line-height:1.55;white-space:pre-wrap}
+.ev-agent{
+  font-size:11px;font-weight:700;color:var(--cyan);
+  font-family:'SF Mono','Cascadia Code','Consolas',monospace;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+.ev-time{
+  font-size:10px;color:var(--muted);white-space:nowrap;
+  font-family:'SF Mono','Cascadia Code','Consolas',monospace;
+}
+.ev-body{
+  font-size:13px;line-height:1.6;
+  white-space:pre-wrap;color:var(--text);
+  font-family:'SF Mono','Cascadia Code','Consolas',monospace;
+}
 .ev-body:empty{display:none}
 
 /* ── Empty state ── */
 #empty{
-  text-align:center;padding:56px 20px;
-  display:flex;flex-direction:column;align-items:center;gap:10px;
+  text-align:center;padding:60px 20px;
+  display:flex;flex-direction:column;align-items:center;gap:12px;
 }
-.empty-icon{font-size:40px;opacity:.35;line-height:1}
-.empty-txt{font-size:14px;color:var(--muted)}
+.empty-icon{
+  width:52px;height:52px;border-radius:50%;
+  border:1px solid var(--border);
+  background:var(--surface);
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;
+  box-shadow:0 0 24px rgba(34,211,238,.08);
+}
+.empty-line{
+  width:1px;height:28px;background:linear-gradient(to bottom,var(--border),transparent);
+}
+.empty-txt{
+  font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;
+  font-family:'SF Mono','Cascadia Code','Consolas',monospace;
+}
 </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">Agents<em>Bot</em></div>
+  <div class="logo">Agents<em>Bot</em> <span>·</span> Monitor</div>
   <div id="conn-wrap">
-    <span class="pulse-dot" id="dot"></span>
-    <span id="conn-text">正在连接…</span>
+    <span class="dot" id="dot"></span>
+    <span id="conn-text">connecting…</span>
   </div>
 </header>
 
 <main>
   <div class="card">
-    <div class="card-label">当前任务</div>
+    <div class="card-label">// 当前任务</div>
     <div id="goal">等待电脑同步</div>
     <div class="task-foot">
       <span class="badge" id="status">等待连接</span>
@@ -204,14 +287,16 @@ main{
   </div>
 
   <div class="events-bar">
-    <span class="events-title">协作动态</span>
+    <span class="events-title">// 协作动态</span>
     <button class="sort-btn" id="order">最新在前 ↓</button>
   </div>
 
   <div id="events"></div>
   <div id="empty">
-    <span class="empty-icon">📋</span>
-    <span class="empty-txt">等待任务动态…</span>
+    <div class="empty-line"></div>
+    <div class="empty-icon">📋</div>
+    <div class="empty-line"></div>
+    <span class="empty-txt">awaiting events</span>
   </div>
 </main>
 
@@ -221,7 +306,7 @@ let key=location.hash.slice(1),latest=true,entries=[],previous='';
 
 function parseEvent(text){
   const m=text.match(/^([\s\S]{1,120}?)\s+\[([^\]]+)\]\s*([\s\S]*)$/);
-  return m?{agent:m[1],time:m[2],body:m[3].trim()}:{agent:'工作台',time:'',body:text};
+  return m?{agent:m[1],time:m[2],body:m[3].trim()}:{agent:'SYS',time:'',body:text};
 }
 
 function draw(){
@@ -233,23 +318,24 @@ function draw(){
   }
   $('empty').hidden=true;
   const frag=document.createDocumentFragment();
-  list.forEach(text=>{
+  list.forEach((text,i)=>{
     const {agent,time,body}=parseEvent(text);
     const div=document.createElement('div');
     div.className='ev';
+    div.style.animationDelay=i*0.03+'s';
     const head=document.createElement('div');
     head.className='ev-head';
-    const agentEl=document.createElement('span');
-    agentEl.className='ev-agent';
-    agentEl.textContent=agent;
-    const timeEl=document.createElement('span');
-    timeEl.className='ev-time';
-    timeEl.textContent=time;
-    head.append(agentEl,timeEl);
-    const bodyEl=document.createElement('div');
-    bodyEl.className='ev-body';
-    bodyEl.textContent=body;
-    div.append(head,bodyEl);
+    const a=document.createElement('span');
+    a.className='ev-agent';
+    a.textContent=agent;
+    const t=document.createElement('span');
+    t.className='ev-time';
+    t.textContent=time;
+    head.append(a,t);
+    const b=document.createElement('div');
+    b.className='ev-body';
+    b.textContent=body;
+    div.append(head,b);
     frag.append(div);
   });
   $('events').replaceChildren(frag);
@@ -261,14 +347,14 @@ $('order').onclick=()=>{
   draw();
 };
 
-function setStatus(state){
-  $('dot').className='pulse-dot'+(state==='ok'?' ok':state==='err'?' err':'');
+function setDot(state){
+  $('dot').className='dot'+(state==='ok'?' ok':state==='err'?' err':'');
 }
 
 async function sync(){
   if(!key){
-    $('conn-text').textContent='请用电脑上的完整连接地址打开';
-    setStatus('err');
+    $('conn-text').textContent='NO_KEY :: open via desktop link';
+    setDot('err');
     return;
   }
   const ctrl=new AbortController();
@@ -279,8 +365,8 @@ async function sync(){
       signal:ctrl.signal,
     });
     if(r.status===403){
-      $('conn-text').textContent='连接已失效，请重新配对';
-      setStatus('err');
+      $('conn-text').textContent='AUTH_FAIL :: re-pair device';
+      setDot('err');
       return;
     }
     if(!r.ok)throw Error();
@@ -288,22 +374,23 @@ async function sync(){
     if(raw!==previous){
       const s=JSON.parse(raw);
       $('goal').textContent=s.goal||'等待开始任务';
-      $('status').textContent=s.status||'就绪';
+      $('status').textContent=s.status||'IDLE';
       $('members').replaceChildren(...(s.members||[]).map(n=>{
         const el=document.createElement('span');
         el.className='member'+(n===s.leader?' leader':'');
-        el.textContent=n+(n===s.leader?' · 组长':'');
+        el.textContent=n+(n===s.leader?' ★':'');
         return el;
       }));
       entries=s.events||[];
       draw();
       previous=raw;
     }
-    $('conn-text').textContent='已同步 '+new Date().toLocaleTimeString();
-    setStatus('ok');
+    const t=new Date().toLocaleTimeString('en',{hour12:false});
+    $('conn-text').textContent='SYNC '+t;
+    setDot('ok');
   }catch{
-    $('conn-text').textContent='电脑离线 · 重连中';
-    setStatus('err');
+    $('conn-text').textContent='OFFLINE :: reconnecting';
+    setDot('err');
   }finally{
     clearTimeout(timer);
   }

@@ -20,6 +20,7 @@ class BotRail:
         self.records = []
         self.rows = []
         self.editor = None
+        self._avatars = []  # keep PhotoImage refs alive
         tk.Frame(parent, bg=ui.RAIL_ACTIVE, height=1).pack(fill="x", padx=15, pady=(18, 9))
         bar = tk.Frame(parent, bg=ui.RAIL)
         bar.pack(fill="x", padx=13)
@@ -54,20 +55,25 @@ class BotRail:
         self.rows = self.records or [dict(name=name, instructions=prompt) for name, prompt in TEMPLATES.items()]
         for row in self.items.winfo_children():
             row.destroy()
+        self._avatars.clear()
         self.entry_widgets.clear()
-        for row in self.rows:
+        for index, row in enumerate(self.rows):
             saved = bool(row.get("id"))
             tile = tk.Frame(self.items, bg=ui.RAIL)
             tile.pack(fill="x", pady=1)
-            label = self._button(tile, row["name"] if saved else "＋ " + row["name"],
-                                 (lambda b=row: self.desk.show_bot(b)) if saved
-                                 else lambda b=row: self.edit(template=b["name"]))
             if saved:
+                img = ui.bot_avatar(self.viewport, index, size=16)
+                self._avatars.append(img)
+                label = self._button(tile, row["name"], (lambda b=row: self.desk.show_bot(b)))
+                label.configure(image=img, compound="left", padx=8, font=(ui.FONT, 10), pady=5, width=1)
                 settings = self._button(tile, "⋯", lambda b=row: self.edit(b))
                 settings.configure(font=("Segoe UI", 12), padx=4)
                 settings.pack(side="right", fill="y")
                 self.entry_widgets[row["id"]] = (tile, label, settings)
-            label.configure(font=(ui.FONT, 10), pady=5, width=1)
+            else:
+                label = self._button(tile, "＋ " + row["name"],
+                                     lambda b=row: self.edit(template=b["name"]))
+                label.configure(font=(ui.FONT, 10), pady=5, width=1)
             label.pack(side="left", fill="both", expand=True)
             for control in tile.winfo_children():
                 control.bind("<MouseWheel>", self._scroll)

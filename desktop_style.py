@@ -1,21 +1,34 @@
 """Shared native desktop palette, controls and small navigation icons."""
 import tkinter as tk
 from tkinter import font as tkfont, ttk
+from math import sqrt
 
 
 FONT = "Microsoft YaHei UI"
-BG = "#f3f4f6"
+BG = "#f0f4f8"
 SURFACE = "#ffffff"
-FIELD = "#f8f9fb"
-INK = "#18191e"
-MUTED = "#60677a"
-BORDER = "#d8dbe4"
-SUBTLE = "#eaecf2"
-ACCENT = "#1a1d24"
-RAIL = "#16202e"
-RAIL_TEXT = "#c8d4e3"
-RAIL_SUB = "#8fa3ba"
-RAIL_ACTIVE = "#1e2f47"
+FIELD = "#f8fafc"
+INK = "#0f172a"
+MUTED = "#64748b"
+BORDER = "#cbd5e1"
+SUBTLE = "#e2e8f0"
+ACCENT = "#2563eb"
+RAIL = "#0f172a"
+RAIL_TEXT = "#94a3b8"
+RAIL_SUB = "#64748b"
+RAIL_ACTIVE = "#1e293b"
+
+# Cycling palette for bot avatars
+AVATAR_COLORS = [
+    "#3b82f6",  # blue
+    "#8b5cf6",  # violet
+    "#10b981",  # emerald
+    "#f59e0b",  # amber
+    "#ef4444",  # rose
+    "#06b6d4",  # cyan
+    "#ec4899",  # pink
+    "#84cc16",  # lime
+]
 
 
 def configure(root):
@@ -39,29 +52,29 @@ def configure(root):
                     borderwidth=1, relief="raised", focusthickness=1, focuscolor=BORDER)
     style.map("TButton",
               background=[("disabled", BG), ("pressed", SUBTLE), ("active", SUBTLE)],
-              foreground=[("disabled", "#8a8d96")],
+              foreground=[("disabled", "#94a3b8")],
               bordercolor=[("focus", MUTED), ("active", MUTED)])
     style.configure("Accent.TButton", background=ACCENT, foreground=SURFACE, bordercolor=ACCENT,
                     lightcolor=ACCENT, darkcolor=ACCENT, focuscolor=SURFACE, padding=(13, 7),
                     font=(FONT, 10, "bold"))
     style.map("Accent.TButton",
-              background=[("disabled", "#e2e4ea"), ("pressed", "#0d0f14"), ("active", "#2e3240")],
-              foreground=[("disabled", "#8a8d96")],
+              background=[("disabled", "#e2e8f0"), ("pressed", "#1e40af"), ("active", "#1d4ed8")],
+              foreground=[("disabled", "#94a3b8")],
               bordercolor=[("disabled", BORDER), ("!disabled", ACCENT)])
     style.configure("Danger.TButton", background=SURFACE, foreground="#b91c1c", bordercolor="#fca5a5",
                     lightcolor=SURFACE, darkcolor=SURFACE, padding=(10, 5))
     style.map("Danger.TButton",
               background=[("disabled", BG), ("pressed", "#fef2f2"), ("active", "#fff5f5")],
-              foreground=[("disabled", "#8a8d96"), ("active", "#991b1b")],
+              foreground=[("disabled", "#94a3b8"), ("active", "#991b1b")],
               bordercolor=[("active", "#f87171")])
     for name in ("TEntry", "TCombobox"):
         style.configure(name, fieldbackground=FIELD, padding=(7, 5), arrowsize=12)
         style.map(name, fieldbackground=[("disabled", BG), ("readonly", FIELD)],
-                  foreground=[("disabled", "#77797c")], bordercolor=[("focus", MUTED)])
+                  foreground=[("disabled", "#94a3b8")], bordercolor=[("focus", ACCENT)])
     for name in ("TCheckbutton", "TRadiobutton"):
         style.configure(name, background=SURFACE, padding=(2, 3),
                         indicatorbackground=FIELD, indicatorforeground=INK)
-        style.map(name, background=[("active", SUBTLE)], foreground=[("disabled", "#8a8d96")])
+        style.map(name, background=[("active", SUBTLE)], foreground=[("disabled", "#94a3b8")])
     style.configure("TNotebook", borderwidth=0, background=BG, tabmargins=(0, 0, 0, 0))
     style.configure("TNotebook.Tab", background=BG, foreground=MUTED, padding=(10, 6))
     style.map("TNotebook.Tab",
@@ -74,14 +87,14 @@ def configure(root):
 
 
 def style_text(widget, *, editor=False):
-    widget.configure(bg=FIELD if editor else SURFACE, fg=INK, insertbackground=INK,
-                     selectbackground="#d0ddf5", selectforeground=INK, relief="flat", borderwidth=0,
-                     highlightthickness=1 if editor else 0, highlightbackground=BORDER, highlightcolor=MUTED,
+    widget.configure(bg=FIELD if editor else SURFACE, fg=INK, insertbackground=ACCENT,
+                     selectbackground="#bfdbfe", selectforeground=INK, relief="flat", borderwidth=0,
+                     highlightthickness=1 if editor else 0, highlightbackground=BORDER, highlightcolor=ACCENT,
                      font=(FONT, 10), padx=10, pady=8, spacing1=2, spacing3=3)
     if hasattr(widget, "vbar"):
         bar = widget.vbar
         bar.configure(width=8, borderwidth=0, relief="flat", highlightthickness=0,
-                      troughcolor=BG, background="#c5cad6", activebackground=MUTED)
+                      troughcolor=BG, background="#94a3b8", activebackground=MUTED)
 
         def scroll(first, last):
             if float(first) > 0 or float(last) < 1:
@@ -93,6 +106,19 @@ def style_text(widget, *, editor=False):
 
         widget.configure(yscrollcommand=scroll)
     return widget
+
+
+def bot_avatar(master, index, size=18):
+    """Colored filled-circle avatar keyed by bot list index."""
+    color = AVATAR_COLORS[index % len(AVATAR_COLORS)]
+    photo = tk.PhotoImage(master=master, width=size, height=size)
+    cx = cy = size / 2
+    r = size / 2 - 0.5
+    for row in range(size):
+        for col in range(size):
+            if sqrt((col + 0.5 - cx) ** 2 + (row + 0.5 - cy) ** 2) <= r:
+                photo.put(color, (col, row))
+    return photo
 
 
 def icon(master, name, color, size=20):
