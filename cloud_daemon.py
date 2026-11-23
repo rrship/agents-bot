@@ -12,6 +12,7 @@ import threading
 import time
 
 from providers import BUILTIN, MEMBER_NAMES, NAMES
+from lite_agent import bot_instructions
 
 
 ACTIVE = {"starting", "running", "stopping"}
@@ -85,6 +86,9 @@ def validate_configs(configs, members):
         clean[name] = dict(mode="api", model=model, key=key)
         if name == BUILTIN:
             clean[name]["provider"] = provider
+            instructions = bot_instructions(cfg)
+            if instructions:
+                clean[name]["instructions"] = instructions
     return clean
 
 

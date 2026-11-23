@@ -96,12 +96,18 @@ class AccountStore:
         db = sqlite3.connect(self.path, timeout=10)
         db.row_factory = sqlite3.Row
         try:
+            db.execute("PRAGMA foreign_keys = ON")
             with db:
                 db.execute("""CREATE TABLE IF NOT EXISTS profiles (
                     id TEXT PRIMARY KEY, name TEXT NOT NULL, name_fold TEXT NOT NULL,
                     provider TEXT NOT NULL, model TEXT NOT NULL, key_env TEXT NOT NULL,
                     protected_key BLOB, UNIQUE(provider, name_fold),
                     CHECK((protected_key IS NULL) = (key_env <> ''))
+                )""")
+                db.execute("""CREATE TABLE IF NOT EXISTS bots (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL, name_fold TEXT NOT NULL UNIQUE,
+                    instructions TEXT NOT NULL,
+                    profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT
                 )""")
                 if write:
                     db.execute("BEGIN IMMEDIATE")
@@ -153,8 +159,49 @@ class AccountStore:
 
     def delete_profile(self, profile_id):
         with self._database(write=True) as db:
+            if db.execute("SELECT 1 FROM bots WHERE profile_id=? LIMIT 1", (profile_id,)).fetchone():
+                raise ValueError("有 Bot 正在使用此账号，请先为它们更换账号或删除对应 Bot。")
             if not db.execute("DELETE FROM profiles WHERE id=?", (profile_id,)).rowcount:
                 raise ValueError("档案不存在，请刷新账号列表。")
+
+    def list_bots(self):
+        with self._database() as db:
+            return [dict(row) for row in db.execute("""
+                SELECT b.id, b.name, b.instructions, b.profile_id,
+                       p.name AS profile_name, p.provider, p.model
+                FROM bots AS b JOIN profiles AS p ON p.id = b.profile_id
+                ORDER BY b.name_fold, b.id""")]
+
+    def save_bot(self, name, instructions, profile_id, bot_id=None):
+        if not isinstance(name, str):
+            raise ValueError("请输入 Bot 名称。")
+        name = unicodedata.normalize("NFC", name.strip())
+        if not 1 <= len(name) <= 80 or not name.isprintable():
+            raise ValueError("Bot 名称须为 1 至 80 个可显示字符。")
+        if not isinstance(instructions, str) or len(instructions) > 4000 or "\0" in instructions:
+            raise ValueError("Bot 职责须为最多 4000 字符的文本。")
+        if not isinstance(profile_id, str) or not profile_id:
+            raise ValueError("请选择一个 API 账号。")
+        values = (name, name.casefold(), instructions.strip(), profile_id)
+        with self._database(write=True) as db:
+            if not db.execute("SELECT 1 FROM profiles WHERE id=?", (profile_id,)).fetchone():
+                raise ValueError("所选 API 账号不存在，请刷新账号列表。")
+            try:
+                if bot_id is None:
+                    bot_id = uuid.uuid4().hex
+                    db.execute("INSERT INTO bots(name,name_fold,instructions,profile_id,id) VALUES (?,?,?,?,?)",
+                               (*values, bot_id))
+                elif not db.execute("UPDATE bots SET name=?, name_fold=?, instructions=?, profile_id=? WHERE id=?",
+                                    (*values, bot_id)).rowcount:
+                    raise ValueError("Bot 不存在，请刷新列表。")
+            except sqlite3.IntegrityError:
+                raise ValueError("已有同名 Bot，请使用不同的名称。") from None
+        return bot_id
+
+    def delete_bot(self, bot_id):
+        with self._database(write=True) as db:
+            if not db.execute("DELETE FROM bots WHERE id=?", (bot_id,)).rowcount:
+                raise ValueError("Bot 不存在，请刷新列表。")
 
     def resolve(self, profile_id):
         with self._database() as db:

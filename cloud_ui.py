@@ -11,7 +11,9 @@ from tkinter.scrolledtext import ScrolledText
 from cloud_room import snapshot, validated_files
 from cloud_ssh import CloudSSH
 from cloud_worker import run_team
+from desktop_style import style_text
 from engine import hidden
+from lite_agent import bot_instructions
 from providers import BUILTIN, ENV_KEYS, MEMBER_NAMES
 
 
@@ -68,6 +70,9 @@ def server_configs(configs):
         result[name] = dict(mode="api", model=cfg["model"], key=key)
         if name == BUILTIN:
             result[name]["provider"] = provider
+            instructions = bot_instructions(cfg)
+            if instructions:
+                result[name]["instructions"] = instructions
     return result
 
 
@@ -96,57 +101,90 @@ class CloudPanel(ttk.Frame):
         self.buttons = {}
         self.inputs = []
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(8, weight=1)
-        ttk.Label(self, text="云服务器协作", style="Title.TLabel").grid(row=0, sticky="w")
-        login = ttk.Frame(self)
-        login.grid(row=1, sticky="ew", pady=(6, 2))
-        for label, var, width in (("服务器", self.host, 24), ("端口", self.port, 6), ("SSH 用户", self.user, 14)):
-            ttk.Label(login, text=label).pack(side="left")
+        self.rowconfigure(1, weight=1)
+        ttk.Label(self, text="云服务器", style="Title.TLabel").grid(row=0, sticky="w", pady=(0, 10))
+        self.pages = ttk.Notebook(self)
+        self.pages.grid(row=1, sticky="nsew")
+        connection = ttk.Frame(self.pages, padding=16)
+        connection.columnconfigure(0, weight=1)
+        self.progress = ttk.Frame(self.pages, padding=16)
+        self.progress.columnconfigure(0, weight=1)
+        self.progress.rowconfigure(5, weight=1)
+        self.pages.add(connection, text="连接与房间")
+        self.pages.add(self.progress, text="成员与进度")
+
+        ttk.Label(connection, text="SSH 连接", style="Section.TLabel").grid(row=0, sticky="w")
+        login = ttk.Frame(connection)
+        login.grid(row=1, sticky="ew", pady=(8, 6))
+        for column, (label, var, width, weight) in enumerate((
+                ("服务器", self.host, 18, 3), ("端口", self.port, 5, 0), ("SSH 用户", self.user, 12, 2))):
+            login.columnconfigure(column, weight=weight)
+            ttk.Label(login, text=label).grid(row=0, column=column, sticky="w")
             entry = ttk.Entry(login, textvariable=var, width=width)
-            entry.pack(side="left", padx=(4, 9))
+            entry.grid(row=1, column=column, sticky="ew", padx=(0, 8) if column < 2 else 0)
             self.inputs.append(entry)
-        self._button(login, "connect", "连接", self.connect)
-        self._button(login, "disconnect", "断开", self.disconnect)
+        identity = ttk.Frame(connection)
+        identity.grid(row=2, sticky="ew", pady=(1, 4))
         self.identity = ""
-        self._button(login, "identity", "选择私钥…", self.choose_identity)
-        ttk.Label(self, text="首次连接请核对服务器指纹。使用密码或带口令的密钥时，在弹出的 SSH 窗口输入。", style="Hint.TLabel").grid(row=2, sticky="w")
-        rooms = ttk.Frame(self)
-        rooms.grid(row=3, sticky="ew", pady=(12, 4))
-        self._button(rooms, "create", "从工作台创建房间", self.create)
-        ttk.Label(rooms, text="房间号").pack(side="left", padx=(10, 4))
-        self.room_entry = ttk.Entry(rooms, textvariable=self.room, width=34)
-        self.room_entry.pack(side="left")
+        self._button(identity, "connect", "连接", self.connect, primary=True)
+        self._button(identity, "identity", "选择私钥…", self.choose_identity)
+        self._button(identity, "disconnect", "断开", self.disconnect)
+        ttk.Label(connection, text="首次连接请核对服务器指纹，密码或密钥口令在 SSH 窗口输入。",
+                  style="Hint.TLabel", wraplength=440).grid(row=3, sticky="w", pady=(2, 10))
+        ttk.Separator(connection).grid(row=4, sticky="ew", pady=(3, 10))
+        ttk.Label(connection, text="协作房间", style="Section.TLabel").grid(row=5, sticky="w")
+        rooms = ttk.Frame(connection)
+        rooms.grid(row=6, sticky="ew", pady=(7, 4))
+        ttk.Label(rooms, text="房间号").pack(side="left", padx=(0, 8))
+        self.room_entry = ttk.Entry(rooms, textvariable=self.room, width=15)
+        self.room_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
         self._button(rooms, "join", "加入", self.join)
-        self._button(rooms, "copy", "复制房间号", self.copy)
-        self._button(rooms, "export", "导出文件…", self.export)
-        members = ttk.Frame(self)
-        members.grid(row=4, sticky="w", pady=(7, 3))
-        ttk.Label(members, text="本次提供的成员").pack(side="left", padx=(0, 8))
+        room_actions = ttk.Frame(connection)
+        room_actions.grid(row=7, sticky="w", pady=(3, 6))
+        self._button(room_actions, "create", "从工作台创建房间", self.create)
+
+        members = ttk.Frame(self.progress)
+        members.grid(row=0, sticky="ew", pady=(0, 5))
+        ttk.Label(members, text="本次提供的成员", style="Section.TLabel").grid(
+            row=0, column=0, columnspan=4, sticky="w", pady=(0, 4))
         self.checks = {}
-        for name in MEMBER_NAMES:
+        for index, name in enumerate(MEMBER_NAMES):
             self.selected[name] = tk.BooleanVar(value=False)
             box = ttk.Checkbutton(members, text=name, variable=self.selected[name], command=self._controls)
-            box.pack(side="left", padx=3)
+            box.grid(row=1+index//4, column=index%4, sticky="w", padx=(0, 12))
             self.checks[name] = box
-        controls = ttk.Frame(self)
-        controls.grid(row=5, sticky="ew", pady=(2, 4))
+        controls = ttk.Frame(self.progress)
+        controls.grid(row=1, sticky="ew", pady=(2, 4))
         self._button(controls, "local", "本机参与", self.start_local)
         self._button(controls, "stop_local", "停止本机参与", self.stop_local)
         self._button(controls, "server", "启动服务器 API", lambda: self.server(True))
         self._button(controls, "stop_server", "停止服务器 API", lambda: self.server(False))
-        ttk.Checkbutton(controls, text="手机显示此房间", variable=self.share,
-                        command=desk.publish_mobile).pack(side="left", padx=6)
-        ttk.Label(self, textvariable=self.notice, wraplength=810, style="Hint.TLabel").grid(row=6, sticky="w", pady=(2, 5))
-        self.heading = tk.StringVar(value="房间进度")
-        ttk.Label(self, textvariable=self.heading, wraplength=810).grid(row=7, sticky="w")
-        self.log = ScrolledText(self, height=7, wrap="word", state="disabled", font=("Microsoft YaHei UI", 10))
-        self.log.grid(row=8, sticky="nsew", pady=(3, 0))
+        ttk.Separator(self.progress).grid(row=2, sticky="ew", pady=(8, 8))
+        actions = ttk.Frame(self.progress)
+        actions.grid(row=3, sticky="ew")
+        ttk.Label(actions, text="房间进度", style="Section.TLabel").pack(side="left")
+        ttk.Checkbutton(actions, text="手机显示此房间", variable=self.share,
+                        command=desk.publish_mobile).pack(side="right")
+        export = self._button(actions, "export", "导出文件…", self.export)
+        export.pack_configure(side="right", padx=(0, 8))
+        copy = self._button(actions, "copy", "复制房间号", self.copy)
+        copy.pack_configure(side="right", padx=(0, 5))
+        self.heading = tk.StringVar(value="加入房间后可查看任务与交接记录。")
+        heading = ttk.Label(self.progress, textvariable=self.heading, style="Hint.TLabel", wraplength=470)
+        heading.grid(row=4, sticky="ew", pady=(4, 0))
+        self.log = style_text(ScrolledText(self.progress, height=3, width=20, wrap="word", state="disabled"))
+        self.log.grid(row=5, sticky="nsew", pady=(2, 0))
+        notice = ttk.Label(self, textvariable=self.notice, wraplength=490, style="Hint.TLabel")
+        notice.grid(row=2, sticky="ew", pady=(7, 0))
+        for label in (heading, notice):
+            label.bind("<Configure>", lambda event: event.widget.configure(wraplength=max(100, event.width-4)))
         self._controls()
 
-    def _button(self, frame, key, label, action):
-        widget = ttk.Button(frame, text=label, command=action)
-        widget.pack(side="left", padx=(3, 0))
+    def _button(self, frame, key, label, action, *, primary=False):
+        widget = ttk.Button(frame, text=label, command=action, style="Accent.TButton" if primary else "TButton")
+        widget.pack(side="left", padx=(0, 5))
         self.buttons[key] = widget
+        return widget
 
     def _controls(self):
         active = self.view.get("status") == "active"
@@ -315,7 +353,7 @@ class CloudPanel(ttk.Frame):
                 lines.append(f"{task['member']} · {STAGE.get(task['stage'], task['stage'])} · {STATUS.get(task['status'], task['status'])}　{task['assignment']}")
             lines.extend(["", f"服务器文件（{len(v['files'])}）：" + ("、".join(v["files"]) or "暂无"), "", *v["events"]])
         else:
-            self.heading.set("房间进度")
+            self.heading.set("加入房间后可查看任务与交接记录。")
         content = "\n".join(lines)
         if self.log.get("1.0", "end-1c") != content:
             self.log.configure(state="normal")
@@ -362,6 +400,7 @@ class CloudPanel(ttk.Frame):
                 for var in self.selected.values():
                     var.set(False)
                 self.notice.set("已进入房间。勾选本设备提供的成员，再选择运行位置。")
+                self.pages.select(self.progress)
                 self.next_refresh = 0
             elif kind == "refresh":
                 self.view, worker = result

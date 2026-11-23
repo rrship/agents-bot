@@ -2,9 +2,18 @@
 
 Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当组长、DeepSeek 写功能、Gemini 写测试，看它们如何分工、交接草稿并审阅同一份项目。工作台支持 GPT、Gemini、Claude、DeepSeek、Kimi 和 GLM。一个团队可以同时使用 API Key 和已登录的本机账号。
 
-**桌面版 v1.3.0** 内置了可以独立处理任务的轻量 Agent。同一服务商可以保存多个 API 账号，分别用于个人对话和团队分工。下载 Windows 便携包，完整解压到可写目录，再双击 `AgentsBot.exe`。
+**桌面版 v1.4.0** 在左侧增加了「我的 Bot」。你可以给不同职责的助手起名、选择模型账号，切换到各自的对话。将 `AgentsBot-v1.4.0-Windows-x64.zip` 完整解压到可写目录，双击 `AgentsBot.exe` 即可打开工作台。
 
-[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.3.0/AgentsBot-v1.3.0-Windows-x64.zip) · [下载配套安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.3.0/AgentsBot-Android.apk) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.3.0/AgentsBot-v1.3.0-source.zip) · [查看 v1.3.0 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.3.0)
+[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.4.0/AgentsBot-v1.4.0-Windows-x64.zip) · [下载配套安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.4.0/AgentsBot-Android.apk) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.4.0/AgentsBot-v1.4.0-source.zip) · [查看 v1.4.0 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.4.0)
+
+## 从侧栏创建一个 Bot
+
+![v1.4.0 工作台：左侧列出自定义 Bot，右侧是代码审查 Bot 的示例对话及团队绑定入口](docs/images/bot-sidebar.png)
+
+1. 在「我的 Bot」点「＋ 新建」。首次使用时也可直接点「代码审查」「研究助手」或「测试助手」作为起点。
+2. 给它起名，选择模型账号，写下它的职责。例如给代码审查 Bot 填入「逐条列出文件名、风险和修改建议」。首次使用可在此处点「新建账号…」配置服务商、模型 ID 和 API 密钥。
+3. 保存后点侧栏的 Bot 名称即可对话。点名字旁的「⋯」或对话页的「Bot 设置…」可编辑名称、职责和账号。设置会在重启后保留，各 Bot 的对话、附件和草稿保留在本次窗口内。关闭前点「导出草稿…」可保存生成的文件。
+4. 想让它参与团队，打开这个 Bot，点「用于团队内置 Agent」，再到「成员与连接」勾选队友。要让它领队，选「组长统筹」，将「内置 Agent」设为组长。团队有一个内置 Agent 席位，你可以从侧栏选择另一位 Bot 并重新绑定。[Bot 设置与团队绑定指南](使用说明.md#我的-bot)
 
 | 你想做什么 | 从哪里开始 |
 | --- | --- |
@@ -17,7 +26,7 @@ Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当�
 
 1. 打开「内置 Agent 与账号」→「新建」。填写账号名称、模型服务和该账号可用的模型 ID，再填 API Key 或环境变量名。点「保存」。同一服务商可以分别保存个人和工作账号。
 2. 选好账号，在「任务或问题」输入要求并点「发送」。例如，点「添加参考文件…」选择一份费用明细 JSON，再输入「按类别汇总金额，列出缺少类别的记录，生成 summary.md」。Agent 可以列出、读取和搜索提供的文本。答复显示在页内，生成的文件用「导出草稿…」保存到新目录。
-3. 想让它参与原有的多人团队，点「用于团队内置 Agent」，再到「成员与连接」选其他成员及组长。也可点「用于同名模型成员」，为已有的 GPT、Gemini 等成员指定档案。独立对话切换账号后，原账号的本次对话和草稿可切回查看。
+3. 想让它参与原有的多人团队，展开「账号管理」，点「用于团队内置 Agent」，再到「成员与连接」选其他成员及组长。也可点「用于同名模型成员」，为已有的 GPT、Gemini 等成员指定档案。独立对话切换账号后，原账号的本次对话和草稿可切回查看。
 
 已有多把密钥时，可以将账号写在同一个 JSON 文件里。下面的示例从环境变量读取 DeepSeek 密钥。先设置 `DEEPSEEK_API_KEY` 并重新打开工作台，把 `your-model-id` 换成账号已开通的模型 ID，再将内容保存为 UTF-8 的 `accounts.json`，点「导入账号 JSON」选中它。
 
@@ -46,7 +55,7 @@ Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当�
 
    > 用 Python 标准库写一个离线命令行待办工具。运行 `python todo.py add 买牛奶` 后，退出并重新运行 `python todo.py list` 仍能看到“买牛奶”。请提供自动化测试，以及使用临时目录验证这个过程的 `smoke.py`。
 
-5. **运行并查看交付。** 在「构建或测试命令」填 `["python","-m","unittest","discover","-v"]`，在「启动冒烟检查」填 `["python","smoke.py"]`。点「开始协作」，在「协作记录」查看分工、修改和检查结果。结束后点「交付目录」取回文件，点「改动差异」审查修改。两栏命令都留空时，交付会标记为「待人工验收」。
+5. **运行并查看交付。** 展开「自动验收命令」，在「构建或测试命令」填 `["python","-m","unittest","discover","-v"]`，在「启动冒烟检查」填 `["python","smoke.py"]`。点「开始协作」，在「协作记录」查看分工、修改和检查结果。结束后点「交付目录」取回文件，点「改动差异」审查修改。两栏命令都留空时，交付会标记为「待人工验收」。
 
 成员在实现阶段可以把已完成的文件、接口决定和剩余工作一起交给下一位。工作台也会在上下文首次超过字符预算且有接手人时自动交接。可以在协作记录中查看原因，暂停后用「继续」恢复。[上下文交接说明](使用说明.md#上下文交接)
 
@@ -60,7 +69,7 @@ Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当�
 
 ## 绑定安卓手机
 
-1. 电脑右上角点「手机监控」，手机打开配套安卓应用，点「扫码绑定」并扫描电脑上的二维码。同一可信 Wi-Fi 下可直接配对。
+1. 点电脑左侧栏底部的「手机监控」，手机打开配套安卓应用，点「扫码绑定」并扫描电脑上的二维码。同一可信 Wi-Fi 下可直接配对。
 2. 外出使用移动数据时，让手机和电脑加入同一个 Tailscale 私有网络。确认电脑配对界面显示「可跨网」。原来通过局域网配对的手机，需要切换到 Tailscale 地址后重新扫码。
 3. 查看云任务时，在已加入房间的电脑勾选「手机显示此房间」。手机通过这台电脑获取更新，查看期间请保持工作台和 SSH 会话在线。已启动的服务器 API 成员可以在电脑关机后继续工作。[配对、跨网查看与解绑](手机监控.md)
 

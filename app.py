@@ -2,6 +2,7 @@
 import json
 import os
 import queue
+import re
 import sqlite3
 import threading
 from collections import deque
@@ -10,6 +11,8 @@ from pairing_ui import PairingWindow
 from cloud_ui import CloudPanel
 from lite_ui import LitePanel
 from account_store import AccountStore
+import desktop_style as ui
+from bot_sidebar import BotRail
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -22,12 +25,7 @@ from providers import ACCOUNT_NAMES, BUILTIN, ENV_KEYS, MEMBER_NAMES, NAMES, cal
 
 DEFAULT_MEMBERS = ("GPT", "Gemini")
 MODES = {"账号登录": "account", "API Key": "api"}
-BG = "#f1f4f7"
-WHITE = "#ffffff"
-INK = "#182b3c"
-MUTED = "#4c6170"
-ACCENT = "#126b66"
-FONT = "Microsoft YaHei UI"
+FONT = ui.FONT
 
 
 def parse_commands(text):
@@ -49,10 +47,9 @@ class Desk:
     def __init__(self, root):
         self.root = root
         root.title("Agents Bot · 多智能体开发工作台")
-        root.geometry("1080x740")
+        root.geometry("1180x760")
         root.minsize(880, 630)
-        root.configure(bg=BG)
-        root.option_add("*Font", (FONT, 10))
+        ui.configure(root)
         self.queue = queue.Queue()
         self.monitor = None
         self.activity = deque(maxlen=100)
@@ -63,19 +60,16 @@ class Desk:
         self.forms = {}
         self._account_store = None
         self.profile_bindings = {}
+        self.team_bot_id = None
         self.cancel_pending = False
         self.project = tk.StringVar()
         self.status = tk.StringVar(value="准备就绪")
-        self._style()
-        header = tk.Frame(root, bg=INK, padx=22, pady=13)
-        header.pack(fill="x")
-        tk.Label(header, text="Agents Bot", font=("Segoe UI Semibold", 19), bg=INK, fg=WHITE).pack(side="left")
-        tk.Label(header, text="多智能体开发工作台", fg="#c0d7df", bg=INK, padx=16).pack(side="left")
-        tk.Label(header, textvariable=self.status, bg="#294858", fg=WHITE, padx=10, pady=4).pack(side="right")
-        ttk.Button(header, text="手机监控", command=self.mobile_settings).pack(side="right", padx=8)
-        self.tabs = ttk.Notebook(root)
-        self.tabs.pack(fill="both", expand=True, padx=15, pady=12)
-        self.tasks = ttk.Frame(self.tabs, padding=12)
+        self.sidebar = tk.Frame(root, bg=ui.RAIL, width=176)
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
+        self.tabs = ttk.Notebook(root, style="Pages.TNotebook", takefocus=False)
+        self.tabs.pack(side="left", fill="both", expand=True)
+        self.tasks = tk.Frame(self.tabs, bg=ui.BG)
         self.team = ttk.Frame(self.tabs, padding=16)
         self.tabs.add(self.tasks, text="任务工作台")
         self.tabs.add(self.team, text="成员与连接")
@@ -85,19 +79,28 @@ class Desk:
         self.tabs.add(self.cloud, text="云服务器")
         self.lite = LitePanel(self.tabs, self)
         self.tabs.add(self.lite, text="内置 Agent 与账号")
+        self._navigation()
         self._controls()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
-        self.root.after(100, self._poll)
+        self.poll_timer = self.root.after(100, self._poll)
         self.pairing_window = None
-        self.root.after_idle(self.restore_monitor)
+        self.restore_timer = self.root.after_idle(self.restore_monitor)
+        self.root.bind("<Destroy>", self._cancel_timers, add="+")
+
+    def _cancel_timers(self, event):
+        if event.widget is self.root:
+            for timer in (self.poll_timer, self.restore_timer):
+                if timer:
+                    self.root.after_cancel(timer)
 
     def restore_monitor(self):
+        self.restore_timer = None
         address = saved_address()
         if address and not self.monitor:
             try:
                 self.enable_monitor(address)
             except OSError:
-                self.root.after(10000, self.restore_monitor)
+                self.restore_timer = self.root.after(10000, self.restore_monitor)
             except ValueError:
                 pass
 
@@ -126,94 +129,191 @@ class Desk:
             self.monitor.publish(state.get("goal", ""), self.status.get(), state.get("members", []),
                                  state.get("leader"), self.activity)
 
-    def _style(self):
-        s = ttk.Style()
-        s.theme_use("clam")
-        s.configure(".", font=(FONT, 10), foreground=INK)
-        s.configure("TFrame", background=WHITE)
-        s.configure("TLabel", background=WHITE, foreground=INK)
-        s.configure("Hint.TLabel", foreground=MUTED)
-        s.configure("Title.TLabel", font=(FONT, 14, "bold"))
-        s.configure("TButton", padding=(9, 5))
-        s.configure("Accent.TButton", background=ACCENT, foreground=WHITE)
-        s.map("Accent.TButton", background=[("disabled", "#879694"), ("active", "#095953")])
-        s.configure("TNotebook", background=BG, borderwidth=0)
-        s.configure("TNotebook.Tab", padding=(15, 7))
+    def _navigation(self):
+        self.icons = {name: ui.icon(self.root, name, ui.RAIL_TEXT) for name in ("tasks", "team", "lite", "cloud", "phone")}
+        self.icons["mark"] = ui.icon(self.root, "mark", ui.SURFACE, 24)
+        brand = tk.Frame(self.sidebar, bg=ui.RAIL)
+        brand.pack(fill="x", padx=15, pady=(24, 30))
+        tk.Label(brand, image=self.icons["mark"], bg=ui.RAIL).pack(side="left")
+        tk.Label(brand, text="Agents Bot", bg=ui.RAIL, fg=ui.SURFACE,
+                 font=("Segoe UI Semibold", 15)).pack(side="left", padx=(7, 0))
+        self.nav_buttons = {}
+        for page, symbol in ((self.tasks, "tasks"), (self.team, "team"), (self.lite, "lite"), (self.cloud, "cloud")):
+            label = self.tabs.tab(page, "text")
+            btn = self._rail_button(label, symbol, self.show_accounts if page is self.lite
+                                    else lambda p=page: self.tabs.select(p))
+            btn.pack(fill="x", padx=8, pady=2)
+            self.nav_buttons[str(page)] = btn
+        self._rail_button("手机监控", "phone", self.mobile_settings).pack(side="bottom", fill="x", padx=8, pady=(4, 16))
+        tk.Frame(self.sidebar, bg=ui.RAIL_ACTIVE, height=1).pack(side="bottom", fill="x", padx=15)
+        self.bots = BotRail(self.sidebar, self)
+        self.tabs.bind("<<NotebookTabChanged>>", self._nav_state)
+        self._nav_state()
+
+    def _rail_button(self, text, symbol, command):
+        return tk.Button(self.sidebar, text=text, command=command, image=self.icons[symbol], compound="left",
+                         font=(FONT, 10), anchor="w", bg=ui.RAIL, fg=ui.RAIL_TEXT, relief="flat",
+                         activebackground=ui.RAIL_ACTIVE, activeforeground=ui.SURFACE, cursor="hand2",
+                         borderwidth=0, highlightthickness=1, highlightcolor=ui.RAIL_SUB,
+                         highlightbackground=ui.RAIL, padx=8, pady=8)
+
+    def _nav_state(self, _event=None):
+        current = self.tabs.select()
+        in_bot = current == str(self.lite) and self.lite.active_bot is not None
+        for page, btn in self.nav_buttons.items():
+            selected = page == current and not in_bot
+            bg = ui.RAIL_ACTIVE if selected else ui.RAIL
+            btn.configure(bg=bg, highlightbackground=bg, fg=ui.SURFACE if selected else ui.RAIL_TEXT)
+        self.bots.set_active(self.lite.active_bot["id"] if in_bot else None)
+
+    def show_bot(self, bot):
+        if self.lite.open_bot(bot) is False:
+            self.tabs.select(self.lite)
+            return False
+        self.tabs.select(self.lite)
+        self._nav_state()
+        return True
+
+    def show_accounts(self):
+        self.tabs.select(self.lite)
+        self.lite.open_accounts()
+        self._nav_state()
+
+    def bot_removed(self, bot_id):
+        self.lite.forget_bot(bot_id)
+        if self.team_bot_id == bot_id:
+            self.team_bot_id = None
+            self.profile_bindings.pop(BUILTIN, None)
+            self.builtin_binding.set("先选择一个 Bot 或账号，再绑定到团队。")
+        self._nav_state()
 
     def _task_view(self):
-        self.tasks.columnconfigure(0, weight=3, uniform="main")
-        self.tasks.columnconfigure(1, weight=4, uniform="main")
-        self.tasks.rowconfigure(0, weight=1)
-        left = ttk.Frame(self.tasks, padding=(0, 0, 14, 0))
-        left.grid(row=0, column=0, sticky="nsew")
-        left.columnconfigure(0, weight=1)
+        page = self.tasks
+        page.columnconfigure(0, weight=1)
+        page.rowconfigure(1, weight=1)
+        head = tk.Frame(page, bg=ui.BG)
+        head.grid(row=0, column=0, sticky="ew", padx=18, pady=(17, 13))
+        tk.Label(head, text="任务工作台", bg=ui.BG, fg=ui.INK, font=(FONT, 21, "bold")).pack(side="left")
+        tk.Label(head, textvariable=self.status, bg=ui.SUBTLE, fg=ui.INK, padx=10, pady=4,
+                 font=(FONT, 9)).pack(side="right")
+        cards = tk.Frame(page, bg=ui.BG)
+        cards.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
+        cards.rowconfigure(0, weight=1)
+        cards.columnconfigure(0, weight=10, uniform="columns")
+        cards.columnconfigure(1, weight=11, uniform="columns")
+
+        def card(column):
+            outer = tk.Frame(cards, bg=ui.SURFACE, highlightbackground=ui.BORDER, highlightthickness=1)
+            outer.grid(row=0, column=column, sticky="nsew", padx=(0, 5) if column == 0 else (5, 0))
+            body = ttk.Frame(outer, padding=(12, 12))
+            body.pack(fill="both", expand=True)
+            body.columnconfigure(0, weight=1)
+            return body
+
+        left = card(0)
         left.rowconfigure(4, weight=1)
-        ttk.Label(left, text="开发任务", style="Title.TLabel").grid(sticky="w", pady=(0, 8))
+        ttk.Label(left, text="任务设置", style="Section.TLabel").grid(row=0, sticky="w", pady=(0, 12))
         ttk.Label(left, text="项目目录").grid(row=1, sticky="w")
         row = ttk.Frame(left)
-        row.grid(row=2, sticky="ew", pady=(3, 9))
+        row.grid(row=2, sticky="ew", pady=(3, 10))
         row.columnconfigure(0, weight=1)
-        self.folder_entry = ttk.Entry(row, textvariable=self.project)
-        self.folder_entry.grid(sticky="ew")
+        self.folder_entry = ttk.Entry(row, textvariable=self.project, width=8)
+        self.folder_entry.grid(row=0, column=0, sticky="ew")
         self.browse = ttk.Button(row, text="选择…", command=self._browse)
-        self.browse.grid(row=0, column=1, padx=(4, 0))
+        self.browse.grid(row=0, column=1, padx=(5, 0))
         ttk.Label(left, text="需求与验收条件").grid(row=3, sticky="w")
-        self.goal = self._text(left, 5)
-        self.goal.grid(row=4, sticky="nsew", pady=(3, 9))
-        ttk.Label(left, text="构建或测试命令").grid(row=5, sticky="w")
-        self.tests = self._text(left, 2)
-        self.tests.grid(row=6, sticky="ew", pady=(3, 6))
-        ttk.Label(left, text="启动冒烟检查").grid(row=7, sticky="w")
-        self.smoke = self._text(left, 2)
-        self.smoke.grid(row=8, sticky="ew", pady=(3, 3))
-        ttk.Label(left, style="Hint.TLabel", wraplength=330,
-                  text='每行一个命令，例如 ["python", "smoke.py"]。冒烟脚本需启动软件、检查并退出。两栏均留空时交付物等待人工验收。').grid(row=9, sticky="w")
+        self.goal = self._text(left, 3)
+        self.goal.grid(row=4, sticky="nsew", pady=(4, 8))
+        self.goal_hint = tk.Label(self.goal, text="描述要完成的任务，以及怎样算完成。", anchor="nw",
+                                  bg=ui.FIELD, fg=ui.MUTED, font=(FONT, 10))
+        self.goal_hint.bind("<Button-1>", lambda _event: self.goal.focus_set())
+        self.goal.bind("<FocusIn>", lambda _event: self.goal_hint.place_forget())
+        self.goal.bind("<FocusOut>", self._goal_hint)
+        self.goal.bind("<<Modified>>", self._goal_hint)
+        self._goal_hint()
+        self.checks_button = ttk.Button(left, text="▸  自动验收命令", command=self._toggle_checks)
+        self.checks_button.grid(row=5, sticky="ew")
+        self.check_fields = ttk.Frame(left)
+        self.check_fields.columnconfigure(0, weight=1)
+        self.check_fields.grid(row=6, sticky="ew")
+        ttk.Label(self.check_fields, text="构建或测试命令").grid(row=0, sticky="w", pady=(4, 0))
+        self.tests = self._text(self.check_fields, 1)
+        self.tests.grid(row=1, sticky="ew")
+        ttk.Label(self.check_fields, text="启动冒烟检查").grid(row=2, sticky="w", pady=(3, 0))
+        self.smoke = self._text(self.check_fields, 1)
+        self.smoke.grid(row=3, sticky="ew")
+        self.check_fields.grid_remove()
+        ttk.Label(left, text="参与成员").grid(row=7, sticky="w", pady=(9, 3))
         self.team_link = ttk.Button(left, command=lambda: self.tabs.select(self.team))
-        self.team_link.grid(row=10, sticky="ew", pady=(6, 0))
+        self.team_link.grid(row=8, sticky="ew")
         self.start_button = ttk.Button(left, text="开始协作", style="Accent.TButton", command=self.start)
-        self.start_button.grid(row=11, sticky="ew", pady=(10, 0))
+        self.start_button.grid(row=9, sticky="ew", pady=(10, 0))
 
-        right = ttk.Frame(self.tasks, padding=(12, 0, 0, 0))
-        right.grid(row=0, column=1, sticky="nsew")
-        right.columnconfigure(0, weight=1)
+        right = card(1)
         right.rowconfigure(1, weight=1)
-        ttk.Label(right, text="协作记录", style="Title.TLabel").grid(sticky="w", pady=(0, 8))
-        self.log = ScrolledText(right, wrap="word", font=(FONT, 10), bg="#f8fafb", fg=INK,
-                                relief="solid", borderwidth=1, padx=10, pady=8, state="disabled")
-        self.log.grid(row=1, sticky="nsew")
-        buttons = ttk.Frame(right)
-        buttons.grid(row=2, sticky="ew", pady=(9, 0))
-        self.pause = ttk.Button(buttons, text="暂停", command=self.request_pause)
-        self.pause.pack(side="left")
-        self.resume = ttk.Button(buttons, text="继续", command=self.continue_job)
-        self.resume.pack(side="left", padx=3)
-        self.reopen = ttk.Button(buttons, text="载入任务…", command=self.open_job)
-        self.reopen.pack(side="left")
-        self.output = ttk.Button(buttons, text="交付目录", command=self.open_folder)
-        self.output.pack(side="right")
-        more = ttk.Frame(right)
-        more.grid(row=3, sticky="ew", pady=(5, 0))
-        self.feedback = ttk.Button(more, text="补充要求", command=self.add_feedback)
-        self.feedback.pack(side="left")
-        self.diff = ttk.Button(more, text="改动差异", command=self.open_diff)
-        self.diff.pack(side="left", padx=3)
-        self.cancel_btn = ttk.Button(more, text="取消任务", command=self.cancel_job)
-        self.cancel_btn.pack(side="left")
-        self.new_button = ttk.Button(more, text="新建任务", command=self.new_job)
-        self.new_button.pack(side="right")
+        heading = ttk.Frame(right)
+        heading.grid(row=0, sticky="ew", pady=(0, 6))
+        ttk.Label(heading, text="协作记录", style="Section.TLabel").pack(side="left")
+        self.reopen = ttk.Button(heading, text="载入任务…", command=self.open_job)
+        self.reopen.pack(side="right")
+        stream = ttk.Frame(right)
+        stream.grid(row=1, sticky="nsew")
+        self.log = ScrolledText(stream, width=8, height=4, state="disabled", wrap="word")
+        ui.style_text(self.log)
+        self.log.pack(fill="both", expand=True)
+        self.log.tag_configure("speaker", font=(FONT, 11, "bold"), spacing1=12, spacing3=2)
+        self.log.tag_configure("phase", foreground=ui.MUTED, background=ui.SUBTLE, font=(FONT, 9))
+        self.log.tag_configure("message", spacing3=7, lmargin1=15, lmargin2=15)
+        self.empty_feed = ttk.Frame(stream, padding=(4, 10))
+        self.empty_icon = ui.icon(self.root, "activity", ui.MUTED, 30)
+        ttk.Label(self.empty_feed, image=self.empty_icon).pack()
+        ttk.Label(self.empty_feed, text="等待开始协作", style="Section.TLabel").pack(pady=(6, 3))
+        ttk.Label(self.empty_feed, text="成员的分工、回复和交接会显示在这里。", style="Hint.TLabel",
+                  wraplength=200, justify="center").pack()
+        self.empty_feed.place(relx=.5, rely=.48, anchor="center")
+        ttk.Separator(right).grid(row=2, sticky="ew", pady=(6, 5))
+        actions = self.task_actions = ttk.Frame(right)
+        actions.grid(row=3, sticky="ew")
+        for i in range(3):
+            actions.columnconfigure(i, weight=1, uniform="actions")
+        controls = (("pause", "暂停", self.request_pause), ("resume", "继续", self.continue_job),
+                    ("feedback", "补充要求", self.add_feedback), ("cancel_btn", "取消任务", self.cancel_job),
+                    ("diff", "改动差异", self.open_diff), ("output", "交付目录", self.open_folder))
+        for index, (attr, label, action) in enumerate(controls):
+            button = ttk.Button(actions, text=label, command=action)
+            button.grid(row=index//3, column=index%3, sticky="ew", padx=1, pady=2)
+            setattr(self, attr, button)
+        self.new_button = ttk.Button(head, text="新建任务", command=self.new_job)
+        self.new_button.pack(side="right", padx=(0, 8))
+
+    def _goal_hint(self, _event=None):
+        if self.goal.edit_modified():
+            self.goal.edit_modified(False)
+        if self.goal.get("1.0", "end-1c") or self.root.focus_get() == self.goal:
+            self.goal_hint.place_forget()
+        else:
+            self.goal_hint.place(x=10, y=7, relwidth=.93)
+
+    def _toggle_checks(self):
+        if self.check_fields.winfo_manager():
+            self.check_fields.grid_remove()
+            self.checks_button.configure(text="▸  自动验收命令")
+        else:
+            self.check_fields.grid()
+            self.checks_button.configure(text="▾  自动验收命令")
 
     def _team_view(self):
-        ttk.Label(self.team, text="任务成员", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(self.team, text="成员与连接", style="Title.TLabel").pack(anchor="w", pady=(0, 6))
         ttk.Label(self.team, text="选择 2 至 7 位成员。内置 Agent 使用「内置 Agent 与账号」中绑定的 API 账号。", style="Hint.TLabel").pack(anchor="w")
         roster = ttk.Frame(self.team)
-        roster.pack(anchor="w", pady=(4, 8))
+        roster.pack(fill="x", pady=(6, 8))
         self.member_vars = {}
         self.team_controls = []
-        for name in MEMBER_NAMES:
+        for index, name in enumerate(MEMBER_NAMES):
             member = tk.BooleanVar(value=name in DEFAULT_MEMBERS)
             self.member_vars[name] = member
             button = ttk.Checkbutton(roster, text=name, variable=member)
-            button.pack(side="left", padx=(0, 12))
+            button.grid(row=index//4, column=index%4, sticky="w", padx=(0, 15))
             self.team_controls.append(button)
         roles = ttk.Frame(self.team)
         roles.pack(anchor="w", pady=(0, 12))
@@ -228,7 +328,7 @@ class Desk:
         for variable in (*self.member_vars.values(), self.team_mode, self.leader):
             variable.trace_add("write", self._sync_team)
 
-        ttk.Label(self.team, text="成员连接", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(self.team, text="成员连接", style="Section.TLabel").pack(anchor="w")
         self.connections = ttk.Notebook(self.team)
         self.connections.pack(fill="both", expand=True, pady=(5, 0))
         for name in NAMES:
@@ -253,7 +353,7 @@ class Desk:
                 hint += f"账号模式请在 {EXTRA_ACCOUNTS[name]} 中选择模型。"
             elif has_account:
                 hint += "账号模式可留空模型 ID。"
-            ttk.Label(card, text=hint, style="Hint.TLabel", wraplength=600).grid(
+            ttk.Label(card, text=hint, style="Hint.TLabel", wraplength=440).grid(
                 row=3, column=1, sticky="w")
             actions = ttk.Frame(card)
             actions.grid(row=4, column=1, sticky="w", pady=(10, 4))
@@ -263,7 +363,7 @@ class Desk:
             if has_account:
                 login = ttk.Button(actions, text="登录账号…", command=lambda n=name: self.login(n))
                 login.pack(side="left", padx=6)
-            ttk.Label(card, textvariable=info, wraplength=580, style="Hint.TLabel").grid(
+            ttk.Label(card, textvariable=info, wraplength=440, style="Hint.TLabel").grid(
                 row=5, column=1, sticky="w", pady=4)
             self.forms[name] = dict(mode=mode, model=model, key=key, info=info, test=test, login=login,
                                     entry=key_box, model_box=model_box)
@@ -275,7 +375,7 @@ class Desk:
         binding = ttk.Frame(self.team)
         binding.pack(fill="x", pady=(4, 0))
         ttk.Label(binding, textvariable=self.builtin_binding).pack(side="left")
-        ttk.Button(binding, text="选择账号…", command=lambda: self.tabs.select(self.lite)).pack(side="right")
+        ttk.Button(binding, text="选择账号…", command=self.show_accounts).pack(side="right")
 
     @property
     def account_store(self):
@@ -283,14 +383,20 @@ class Desk:
             self._account_store = AccountStore()
         return self._account_store
 
-    def apply_profile(self, profile_id, builtin=True):
+    def apply_profile(self, profile_id, builtin=True, bot_id=None):
         profile = next((row for row in self.account_store.list_profiles() if row["id"] == profile_id), None)
         if profile is None:
             raise ValueError("账号已删除，请重新选择。")
         member = BUILTIN if builtin else profile["provider"]
         label = f"{profile['name']} · {profile['provider']}"
         if builtin:
-            self.builtin_binding.set("内置 Agent 团队账号：" + label)
+            if bot_id:
+                bot = self.find_bot(bot_id)
+                if bot["profile_id"] != profile_id:
+                    raise ValueError("Bot 的账号已更新，请重新选择。")
+                label = f"{bot['name']} · {label}"
+            self.team_bot_id = bot_id
+            self.builtin_binding.set("团队内置 Agent：" + label)
         else:
             form = self.forms[member]
             form["mode"].set("API Key")
@@ -300,6 +406,12 @@ class Desk:
         self.profile_bindings[member] = profile_id
         if self.job is None and not self.running:
             self.member_vars[member].set(True)
+
+    def find_bot(self, bot_id):
+        bot = next((row for row in self.account_store.list_bots() if row["id"] == bot_id), None)
+        if bot is None:
+            raise ValueError("此 Bot 已删除，请重新选择。")
+        return bot
 
     def refresh_bound_profiles(self, profiles):
         records = {row["id"]: row for row in profiles}
@@ -312,7 +424,15 @@ class Desk:
             else:
                 label = f"{row['name']} · {row['provider']} / {row['model']}"
             if member == BUILTIN:
-                self.builtin_binding.set("内置 Agent 团队账号：" + label)
+                if self.team_bot_id:
+                    try:
+                        bot = self.find_bot(self.team_bot_id)
+                        self.profile_bindings[member] = bot["profile_id"]
+                        account = records.get(bot["profile_id"])
+                        label = f"{bot['name']} · {account['name']} / {account['model']}" if account else "绑定已失效"
+                    except ValueError:
+                        label = "绑定已失效，请重新选择 Bot"
+                self.builtin_binding.set("团队内置 Agent：" + label)
             else:
                 if row is not None and row["provider"] == member:
                     self.forms[member]["model"].set(row["model"])
@@ -350,13 +470,15 @@ class Desk:
 
     @staticmethod
     def _text(parent, height):
-        return ScrolledText(parent, height=height, width=16, wrap="word", font=(FONT, 10), fg=INK,
-                            bg=WHITE, relief="solid", borderwidth=1, padx=6, pady=4, undo=True)
+        return ui.style_text(ScrolledText(parent, height=height, width=12, wrap="word", undo=True), editor=True)
 
     def _config(self, name):
         if name in self.profile_bindings:
             try:
-                cfg = dict(self.account_store.resolve(self.profile_bindings[name]))
+                bot = self.find_bot(self.team_bot_id) if name == BUILTIN and self.team_bot_id else None
+                cfg = dict(self.account_store.resolve(bot["profile_id"] if bot else self.profile_bindings[name]))
+                if bot and bot["instructions"]:
+                    cfg["instructions"] = bot["instructions"]
             except (ValueError, LookupError, OSError, RuntimeError, sqlite3.Error) as error:
                 raise ValueError("绑定的账号不可用，请在「内置 Agent 与账号」检查设置或重新绑定。") from error
             if name != BUILTIN and cfg.pop("provider") != name:
@@ -421,13 +543,29 @@ class Desk:
         self.diff.configure(state="normal" if self.job and not self.running else "disabled")
         self.reopen.configure(state="disabled" if self.running else "normal")
         self.new_button.configure(state="normal" if self.job and not self.running else "disabled")
+        if self.job or self.running:
+            self.task_actions.grid()
+            if not self.new_button.winfo_manager():
+                self.new_button.pack(side="right", padx=(0, 8))
+        else:
+            self.task_actions.grid_remove()
+            self.new_button.pack_forget()
         delivered = self.job and (Path(self.job.path) / "project").is_dir()
         self.output.configure(state="normal" if delivered else "disabled")
 
     def _append(self, line):
         self.activity.append(str(line)[-4000:])
+        self.empty_feed.place_forget()
         self.log.configure(state="normal")
-        self.log.insert("end", str(line) + "\n")
+        for part in str(line).split("\n"):
+            message = re.match(r"^([^\[\]\n]{1,80}?)\s+\[([^\]\n]{1,40})\]\s*(.*)$", part)
+            if message:
+                self.log.insert("end", "•  " + message[1] + "   ", "speaker")
+                self.log.insert("end", " " + message[2] + " ", "phase")
+                self.log.insert("end", "\n")
+                self.log.insert("end", message[3] + "\n", "message")
+            else:
+                self.log.insert("end", part + "\n")
         self.log.see("end")
         self.log.configure(state="disabled")
 
@@ -436,6 +574,7 @@ class Desk:
         self.log.configure(state="normal")
         self.log.delete("1.0", "end")
         self.log.configure(state="disabled")
+        self.empty_feed.place(relx=.5, rely=.48, anchor="center")
 
     def start(self):
         try:
@@ -615,7 +754,7 @@ class Desk:
                     self._finish_cancel()
         if self.monitor:
             self.publish_mobile()
-        self.root.after(100, self._poll)
+        self.poll_timer = self.root.after(100, self._poll)
 
     def close(self):
         if self.running:

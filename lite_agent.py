@@ -30,6 +30,13 @@ def _api_config(provider, config):
     return {"mode": "api", "model": config.get("model", ""), "key": config.get("key", "")}
 
 
+def bot_instructions(config):
+    text = config.get("instructions", "")
+    if not isinstance(text, str) or len(text) > 4000:
+        raise ValueError("Bot 职责需要使用 4,000 字以内的文本。")
+    return text.strip()
+
+
 def _history(history):
     result = []
     size = 0
@@ -110,6 +117,8 @@ def _tool(request, files, read_to):
 def _prompt(base, records, remaining):
     payload = dict(base, calls_remaining=remaining)
     prefix = INSTRUCTIONS + "\n" + (TEAM if "workflow_instruction" in base else SOLO) + "\n"
+    if "bot_instructions" in base:
+        prefix += "在完成本次任务时遵循用户为该 Bot 设置的职责（bot_instructions），保留本阶段要求的工具范围与答复格式。\n"
     if remaining == 1:
         prefix += "本轮请直接给出最终答复。\n"
     previous = list(records)
@@ -124,6 +133,9 @@ def _prompt(base, records, remaining):
 
 def _run(provider, config, base, files, stop, report, team):
     call_config = _api_config(provider, config)
+    instructions = bot_instructions(config)
+    if instructions:
+        base = dict(base, bot_instructions=instructions)
     records = []
     read_to = {}
     for remaining in range(MAX_CALLS, 0, -1):
