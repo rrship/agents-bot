@@ -7,6 +7,7 @@ from pathlib import Path, PureWindowsPath
 import re
 import shutil
 import subprocess
+import threading
 import uuid
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -179,12 +180,15 @@ class Job:
             if self.state["status"] in {"完成", "待人工验收", "已取消"}:
                 return self.state["status"]
 
+            log_lock = threading.Lock()
             def log(line):
-                with (self.path / "events.txt").open("a", encoding="utf-8") as handle:
+                with log_lock, (self.path / "events.txt").open("a", encoding="utf-8") as handle:
                     handle.write(line + "\n")
-                emit(line)
+                    emit(line)
 
             try:
+                if not (self.path / "events.txt").exists():
+                    log("任务目标 · " + self.state["goal"])
                 self.workflow(configs, log, stop)
             except InterruptedError:
                 self.state["status"] = "已暂停"
@@ -207,6 +211,17 @@ class Job:
         leader = s["leader"]
         workers = [name for name in members if name != leader]
 
+        def dispatch(pool, member, stage, prompt):
+            config = configs[member]
+            if isinstance(config, dict) and config.get("mode") == "software":
+                config = dict(config, stop=stop)
+                if config.get("transport") in {"baton", "codex-native"}:
+                    log(f"工作台 → {member} [{stage} · 原生派单] 正在连接 {member}。")
+                else:
+                    log(f"工作台 → {member} [{stage} · 等待领取] 在软件会话中领取，或打开「软件协作」手动交接。")
+                    config["on_claim"] = lambda: log(f"{member} → 工作台 [{stage} · 已领取] 正在处理任务。")
+            return pool.submit(call, member, config, prompt)
+
         def stage_context(root):
             return dict(goal=s["goal"], files=files_at(root), messages=s["messages"][-16:],
                         feedback=s["feedback"], checks=s["checks"], members=members, leader=leader)
@@ -223,7 +238,7 @@ class Job:
                         continue
                     ctx = dict(context, assignment=(personal or {}).get(agent))
                     prompt = bounded_prompt(f"你是{agent}。阶段={stage}。{instruction}。只输出 JSON。", ctx)
-                    futures[pool.submit(call, agent, configs[agent], prompt)] = agent
+                    futures[dispatch(pool, agent, stage, prompt)] = agent
                 errors = []
                 for future in as_completed(futures):
                     agent = futures[future]
@@ -255,6 +270,7 @@ class Job:
                                 log(f"{agent} [验收清单] {item}")
                     except Exception as exc:
                         errors.append(f"{agent}: {exc}")
+                checkpoint()
                 if errors:
                     raise RuntimeError(" / ".join(errors))
             checkpoint()
@@ -307,7 +323,7 @@ class Job:
                             '只提交改动的文本文件。已交接的草稿会自动保留。' + HANDOFF_INSTRUCTION + '只输出 JSON。',
                             ctx)
                         shown = json.loads(prompt.split("\n", 1)[1])["files"].keys()
-                        future = pool.submit(call, actor, configs[actor], prompt)
+                        future = dispatch(pool, actor, "实现", prompt)
                         futures[future] = owner, actor, targets, visited, drafts, shown
                     pending = []
                     for future in as_completed(futures):
@@ -339,6 +355,7 @@ class Job:
                                 log(line)
                         except Exception as exc:
                             errors.append(f"{actor}: {exc}")
+            checkpoint()
             if errors:
                 raise RuntimeError(" / ".join(errors))
             checkpoint()
@@ -414,10 +431,10 @@ class Job:
             n = s["round"]
             base = self.path / (f"round-{n-1}" if n and (self.path / f"round-{n-1}").is_dir() else "baseline")
             if leader:
-                dispatch = exchange("派单", base, [leader],
+                plan = exchange("派单", base, [leader],
                     '你是组长。按用户目标和上一轮反馈分解可并行的工作，为每位执行成员写明交付文件、接口及验收标准。'
                     '返回 {"message":"整体计划","assignments":{"执行成员名":"详细分工"}}', evidence={"workers": workers})
-                assignments = dispatch[leader]["assignments"]
+                assignments = plan[leader]["assignments"]
             else:
                 assignments = {name: ("应用实现与启动入口" if i == 0 else f"测试及独立模块，与其他成员商定文件边界（成员 {i+1}）")
                                for i, name in enumerate(workers)}

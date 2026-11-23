@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import cloud_daemon
 from cloud_room import dispatch
+from cloud_ssh import RUNTIME_FILES
 
 
 class DetachedWorkers(unittest.TestCase):
@@ -32,8 +33,8 @@ class DetachedWorkers(unittest.TestCase):
         self.root = self.base / "rooms"
         self.runtime = self.base / "runtime"
         self.runtime.mkdir()
-        for name in ("cloud_daemon", "cloud_room", "cloud_worker", "providers", "extra_accounts", "engine", "handoff", "lite_agent"):
-            shutil.copyfile(Path(__file__).with_name(name + ".py"), self.runtime / (name + ".py"))
+        for name in RUNTIME_FILES:
+            shutil.copyfile(Path(__file__).with_name(name), self.runtime / name)
         # The production entry point still launches a detached interpreter. Replace only the model in its isolated copy.
         with (self.runtime / "providers.py").open("a", encoding="utf-8") as stream:
             stream.write("""

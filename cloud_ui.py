@@ -59,6 +59,8 @@ def export_project(parent, files):
 def server_configs(configs):
     result = {}
     for name, cfg in configs.items():
+        if cfg["mode"] == "software":
+            raise ValueError(f"{name} 在提供它的电脑上运行。请选择「本机参与」。")
         if cfg["mode"] != "api":
             raise ValueError(f"{name} 使用本机账号。请用「本机参与」，或先在「成员与连接」改为 API Key。")
         provider = cfg.get("provider") if name == BUILTIN else name

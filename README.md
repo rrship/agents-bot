@@ -2,9 +2,21 @@
 
 Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当组长、DeepSeek 写功能、Gemini 写测试，看它们如何分工、交接草稿并审阅同一份项目。工作台支持 GPT、Gemini、Claude、DeepSeek、Kimi 和 GLM。一个团队可以同时使用 API Key 和已登录的本机账号。
 
-**桌面版 v1.4.0** 在左侧增加了「我的 Bot」。你可以给不同职责的助手起名、选择模型账号，切换到各自的对话。将 `AgentsBot-v1.4.0-Windows-x64.zip` 完整解压到可写目录，双击 `AgentsBot.exe` 即可打开工作台。
+**桌面版 v1.5.0 增加了软件成员。** 现在可以让 Codex 当组长、Claude Desktop 写一个模块、DeepSeek Harness 交付测试，再让 Codex 根据合并结果验收。Antigravity、ZCode 和其他支持本地 MCP 的 Harness 也可以加入同一个团队。将 `AgentsBot-v1.5.0-Windows-x64.zip` 完整解压到固定目录，双击 `AgentsBot.exe`。
 
-[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.4.0/AgentsBot-v1.4.0-Windows-x64.zip) · [下载配套安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.4.0/AgentsBot-Android.apk) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.4.0/AgentsBot-v1.4.0-source.zip) · [查看 v1.4.0 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.4.0)
+[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.5.0/AgentsBot-v1.5.0-Windows-x64.zip) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.5.0/AgentsBot-v1.5.0-source.zip) · [下载安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.5.0/AgentsBot-Android.apk) · [v1.5.0 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.5.0)
+
+## 第一次让两个软件合作
+
+![Codex 派单、Claude Desktop 接手并交付、Codex 复核的桌面群聊示例](docs/images/software-conversation.png)
+
+1. 打开「软件协作」，在「配置软件」中依次选 Codex 和 Claude Desktop，分别点「写入 MCP 配置」。按提示重新打开 Codex 会话，完全退出并重开 Claude Desktop。
+2. 点「用 Codex 和 Claude 组队」，工作台会把 Codex 设为组长。选一个项目目录，输入「做一个离线阅读清单，并用示例验证添加和搜索」，点「开始协作」。
+3. 回到「软件协作」，分别选择两款软件，点「复制领取指令」，粘贴到对应软件的对话里发送。回到「任务工作台」即可看到 Codex 给谁派单、Claude Desktop 交回了哪些文件，以及组长的验收结果。
+
+想让工作台主动派单，可以在开始前为 Codex 选择「App Server 独立会话」，或为 DeepSeek Harness 选择「原生插件」。通过 MCP 加入的现有会话由用户发送领取指令后开始工作。[各软件的接单方式](使用说明.md#软件协作)
+
+没有 MCP 的软件也能参加。选「其他 Harness」，在软件协作页领取并复制任务，把软件的完整 JSON 答复粘贴回工作台即可继续。[各软件接法与手动交接](使用说明.md#软件协作)
 
 ## 从侧栏创建一个 Bot
 
@@ -17,6 +29,7 @@ Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当�
 
 | 你想做什么 | 从哪里开始 |
 | --- | --- |
+| 把已经打开的软件会话拉进同一个项目 | [连接桌面软件](#第一次让两个软件合作) |
 | 只有一个 API Key，想直接分析文件或生成草稿 | [使用内置 Agent](#使用内置-agent) |
 | 在一台电脑上试用两个模型 | [完成第一个本地任务](#完成第一个本地任务) |
 | 和异地队友共用项目，或关掉电脑后让 API 成员继续工作 | [加入云服务器房间](#加入云服务器房间) |
@@ -78,6 +91,8 @@ Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当�
 使用带 Tk 的 Python 3.11 或更新版本，在项目目录运行 `python app.py`。运行自动测试使用 `python -m unittest discover -v`。测试使用模拟模型回复，真实账号或密钥可在工作台用「测试连接」核验。[完整中文使用说明](使用说明.md)
 
 ## 项目参考
+
+「团队对话」参考了 ClawChat 将多个 AI 放进同一个项目群聊的交互。工作台用发件人、接收人和任务阶段串起派单、接手、交付和验收。[ClawChat](https://github.com/Lenka0605/ClawChat)
 
 内置 Agent 借鉴 Pi 的小型工具循环，通过现有模型适配器按需读取共享文本。多账号选择和 JSON 导入的交互参考 Cockpit Tools，账号文件使用 Agents Bot 自己的格式。[Pi coding agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) · [Cockpit Tools](https://github.com/jlcodes99/cockpit-tools)
 

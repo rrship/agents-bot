@@ -2,7 +2,6 @@
 import json
 import os
 import queue
-import re
 import sqlite3
 import threading
 from collections import deque
@@ -13,6 +12,9 @@ from lite_ui import LitePanel
 from account_store import AccountStore
 import desktop_style as ui
 from bot_sidebar import BotRail
+from conversation_feed import ConversationFeed
+from software_bridge import Bridge, SOFTWARE_NAMES
+from software_ui import SoftwarePanel
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -58,7 +60,10 @@ class Desk:
         self.job = None
         self.active_checks = set()
         self.forms = {}
+        self._view_traces = []
         self._account_store = None
+        self._bridge = None
+        self.bridge_path = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "AgentsBot" / "software-bridge.sqlite3"
         self.profile_bindings = {}
         self.team_bot_id = None
         self.cancel_pending = False
@@ -75,6 +80,8 @@ class Desk:
         self.tabs.add(self.team, text="成员与连接")
         self._task_view()
         self._team_view()
+        self.software = SoftwarePanel(self.tabs, self)
+        self.tabs.add(self.software, text="软件协作")
         self.cloud = CloudPanel(self.tabs, self)
         self.tabs.add(self.cloud, text="云服务器")
         self.lite = LitePanel(self.tabs, self)
@@ -92,6 +99,9 @@ class Desk:
             for timer in (self.poll_timer, self.restore_timer):
                 if timer:
                     self.root.after_cancel(timer)
+            for variable, callback in self._view_traces:
+                variable.trace_remove("write", callback)
+            self._view_traces.clear()
 
     def restore_monitor(self):
         self.restore_timer = None
@@ -130,7 +140,7 @@ class Desk:
                                  state.get("leader"), self.activity)
 
     def _navigation(self):
-        self.icons = {name: ui.icon(self.root, name, ui.RAIL_TEXT) for name in ("tasks", "team", "lite", "cloud", "phone")}
+        self.icons = {name: ui.icon(self.root, name, ui.RAIL_TEXT) for name in ("tasks", "team", "software", "lite", "cloud", "phone")}
         self.icons["mark"] = ui.icon(self.root, "mark", ui.SURFACE, 24)
         brand = tk.Frame(self.sidebar, bg=ui.RAIL)
         brand.pack(fill="x", padx=15, pady=(24, 30))
@@ -138,7 +148,8 @@ class Desk:
         tk.Label(brand, text="Agents Bot", bg=ui.RAIL, fg=ui.SURFACE,
                  font=("Segoe UI Semibold", 15)).pack(side="left", padx=(7, 0))
         self.nav_buttons = {}
-        for page, symbol in ((self.tasks, "tasks"), (self.team, "team"), (self.lite, "lite"), (self.cloud, "cloud")):
+        for page, symbol in ((self.tasks, "tasks"), (self.software, "software"), (self.team, "team"),
+                             (self.lite, "lite"), (self.cloud, "cloud")):
             label = self.tabs.tab(page, "text")
             btn = self._rail_button(label, symbol, self.show_accounts if page is self.lite
                                     else lambda p=page: self.tabs.select(p))
@@ -196,7 +207,7 @@ class Desk:
         tk.Label(head, text="任务工作台", bg=ui.BG, fg=ui.INK, font=(FONT, 21, "bold")).pack(side="left")
         tk.Label(head, textvariable=self.status, bg=ui.SUBTLE, fg=ui.INK, padx=10, pady=4,
                  font=(FONT, 9)).pack(side="right")
-        cards = tk.Frame(page, bg=ui.BG)
+        cards = self.task_cards = tk.Frame(page, bg=ui.BG)
         cards.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
         cards.rowconfigure(0, weight=1)
         cards.columnconfigure(0, weight=10, uniform="columns")
@@ -211,6 +222,7 @@ class Desk:
             return body
 
         left = card(0)
+        self.settings_card = left.master
         left.rowconfigure(4, weight=1)
         ttk.Label(left, text="任务设置", style="Section.TLabel").grid(row=0, sticky="w", pady=(0, 12))
         ttk.Label(left, text="项目目录").grid(row=1, sticky="w")
@@ -250,27 +262,19 @@ class Desk:
         self.start_button.grid(row=9, sticky="ew", pady=(10, 0))
 
         right = card(1)
+        self.chat_card = right.master
+        self.chat_focus = False
+        self.task_summary = tk.StringVar()
         right.rowconfigure(1, weight=1)
         heading = ttk.Frame(right)
         heading.grid(row=0, sticky="ew", pady=(0, 6))
-        ttk.Label(heading, text="协作记录", style="Section.TLabel").pack(side="left")
+        ttk.Label(heading, text="团队对话", style="Section.TLabel").pack(side="left")
+        self.summary_label = ttk.Label(heading, textvariable=self.task_summary, style="Hint.TLabel")
         self.reopen = ttk.Button(heading, text="载入任务…", command=self.open_job)
         self.reopen.pack(side="right")
-        stream = ttk.Frame(right)
-        stream.grid(row=1, sticky="nsew")
-        self.log = ScrolledText(stream, width=8, height=4, state="disabled", wrap="word")
-        ui.style_text(self.log)
-        self.log.pack(fill="both", expand=True)
-        self.log.tag_configure("speaker", font=(FONT, 11, "bold"), spacing1=12, spacing3=2)
-        self.log.tag_configure("phase", foreground=ui.MUTED, background=ui.SUBTLE, font=(FONT, 9))
-        self.log.tag_configure("message", spacing3=7, lmargin1=15, lmargin2=15)
-        self.empty_feed = ttk.Frame(stream, padding=(4, 10))
-        self.empty_icon = ui.icon(self.root, "activity", ui.MUTED, 30)
-        ttk.Label(self.empty_feed, image=self.empty_icon).pack()
-        ttk.Label(self.empty_feed, text="等待开始协作", style="Section.TLabel").pack(pady=(6, 3))
-        ttk.Label(self.empty_feed, text="成员的分工、回复和交接会显示在这里。", style="Hint.TLabel",
-                  wraplength=200, justify="center").pack()
-        self.empty_feed.place(relx=.5, rely=.48, anchor="center")
+        self.feed = ConversationFeed(right)
+        self.feed.grid(row=1, sticky="nsew")
+        self.log, self.empty_feed = self.feed.log, self.feed.empty_feed
         ttk.Separator(right).grid(row=2, sticky="ew", pady=(6, 5))
         actions = self.task_actions = ttk.Frame(right)
         actions.grid(row=3, sticky="ew")
@@ -285,6 +289,34 @@ class Desk:
             setattr(self, attr, button)
         self.new_button = ttk.Button(head, text="新建任务", command=self.new_job)
         self.new_button.pack(side="right", padx=(0, 8))
+        self.settings_toggle = ttk.Button(head, text="展开任务设置", command=self._toggle_task_focus)
+
+    def _toggle_task_focus(self):
+        self.chat_focus = not self.chat_focus
+        self._task_layout()
+
+    def _task_layout(self):
+        active = self.running or self.job is not None
+        if not active:
+            self.settings_toggle.pack_forget()
+            self.chat_focus = False
+        elif not self.settings_toggle.winfo_manager():
+            self.settings_toggle.pack(side="right", padx=(0, 6))
+        if self.chat_focus:
+            self.settings_card.grid_remove()
+            self.task_cards.columnconfigure(0, weight=0, uniform="")
+            self.chat_card.grid_configure(column=0, columnspan=2, padx=0)
+            self.settings_toggle.configure(text="展开任务设置")
+            members = self._members()
+            role = f"组长 {self.leader.get()}" if self.team_mode.get() == "leader" else "平等协作"
+            self.task_summary.set(f"{len(members)} 位成员   ·   {role}")
+            self.summary_label.pack(side="left", padx=10)
+        else:
+            self.summary_label.pack_forget()
+            self.settings_card.grid()
+            self.task_cards.columnconfigure(0, weight=10, uniform="columns")
+            self.chat_card.grid_configure(column=1, columnspan=1, padx=(5, 0))
+            self.settings_toggle.configure(text="收起任务设置")
 
     def _goal_hint(self, _event=None):
         if self.goal.edit_modified():
@@ -304,17 +336,17 @@ class Desk:
 
     def _team_view(self):
         ttk.Label(self.team, text="成员与连接", style="Title.TLabel").pack(anchor="w", pady=(0, 6))
-        ttk.Label(self.team, text="选择 2 至 7 位成员。内置 Agent 使用「内置 Agent 与账号」中绑定的 API 账号。", style="Hint.TLabel").pack(anchor="w")
+        ttk.Label(self.team, text="至少选择两位成员。模型、内置 Agent 和桌面软件可以混合组队。", style="Hint.TLabel").pack(anchor="w")
         roster = ttk.Frame(self.team)
         roster.pack(fill="x", pady=(6, 8))
-        self.member_vars = {}
+        self.member_vars = {name: tk.BooleanVar(value=name in DEFAULT_MEMBERS) for name in MEMBER_NAMES}
         self.team_controls = []
-        for index, name in enumerate(MEMBER_NAMES):
-            member = tk.BooleanVar(value=name in DEFAULT_MEMBERS)
-            self.member_vars[name] = member
-            button = ttk.Checkbutton(roster, text=name, variable=member)
+        for index, name in enumerate((*NAMES, BUILTIN)):
+            button = ttk.Checkbutton(roster, text=name, variable=self.member_vars[name])
             button.grid(row=index//4, column=index%4, sticky="w", padx=(0, 15))
             self.team_controls.append(button)
+        self.software_link = ttk.Button(roster, text="选择软件…", command=lambda: self.tabs.select(self.software))
+        self.software_link.grid(row=1, column=3, sticky="w")
         roles = ttk.Frame(self.team)
         roles.pack(anchor="w", pady=(0, 12))
         self.team_mode = tk.StringVar(value="peer")
@@ -323,10 +355,10 @@ class Desk:
             radio = ttk.Radiobutton(roles, text=label, variable=self.team_mode, value=value)
             radio.pack(side="left", padx=(0, 10))
             self.team_controls.append(radio)
-        self.leader_box = ttk.Combobox(roles, textvariable=self.leader, width=12)
+        self.leader_box = ttk.Combobox(roles, textvariable=self.leader, width=18)
         self.leader_box.pack(side="left")
         for variable in (*self.member_vars.values(), self.team_mode, self.leader):
-            variable.trace_add("write", self._sync_team)
+            self._view_traces.append((variable, variable.trace_add("write", self._sync_team)))
 
         ttk.Label(self.team, text="成员连接", style="Section.TLabel").pack(anchor="w")
         self.connections = ttk.Notebook(self.team)
@@ -368,7 +400,8 @@ class Desk:
             self.forms[name] = dict(mode=mode, model=model, key=key, info=info, test=test, login=login,
                                     entry=key_box, model_box=model_box)
             for var in (mode, model, key):
-                var.trace_add("write", lambda *_args, n=name: self._changed(n))
+                callback = var.trace_add("write", lambda *_args, n=name: self._changed(n))
+                self._view_traces.append((var, callback))
             self._changed(name)
 
         self.builtin_binding = tk.StringVar(value="内置 Agent 尚未绑定团队账号")
@@ -444,6 +477,8 @@ class Desk:
 
     def _sync_team(self, *_args):
         members = self._members()
+        count = sum(name in SOFTWARE_NAMES for name in members)
+        self.software_link.configure(text=f"软件成员 ({count})…")
         editable = self.job is None and not self.running
         leader_mode = self.team_mode.get() == "leader"
         self.leader_box.configure(values=members, state="readonly" if editable and leader_mode and members else "disabled")
@@ -473,6 +508,8 @@ class Desk:
         return ui.style_text(ScrolledText(parent, height=height, width=12, wrap="word", undo=True), editor=True)
 
     def _config(self, name):
+        if name in SOFTWARE_NAMES:
+            return self.software.config(name)
         if name in self.profile_bindings:
             try:
                 bot = self.find_bot(self.team_bot_id) if name == BUILTIN and self.team_bot_id else None
@@ -527,6 +564,7 @@ class Desk:
 
     def _controls(self):
         self._sync_team()
+        self._task_layout()
         new = self.job is None and not self.running
         self.start_button.configure(state="normal" if new else "disabled")
         self.browse.configure(state="normal" if new else "disabled")
@@ -555,26 +593,19 @@ class Desk:
 
     def _append(self, line):
         self.activity.append(str(line)[-4000:])
-        self.empty_feed.place_forget()
-        self.log.configure(state="normal")
-        for part in str(line).split("\n"):
-            message = re.match(r"^([^\[\]\n]{1,80}?)\s+\[([^\]\n]{1,40})\]\s*(.*)$", part)
-            if message:
-                self.log.insert("end", "•  " + message[1] + "   ", "speaker")
-                self.log.insert("end", " " + message[2] + " ", "phase")
-                self.log.insert("end", "\n")
-                self.log.insert("end", message[3] + "\n", "message")
-            else:
-                self.log.insert("end", part + "\n")
-        self.log.see("end")
-        self.log.configure(state="disabled")
+        self.feed.append(str(line))
 
     def _clear_log(self):
         self.activity.clear()
-        self.log.configure(state="normal")
-        self.log.delete("1.0", "end")
-        self.log.configure(state="disabled")
-        self.empty_feed.place(relx=.5, rely=.48, anchor="center")
+        self.feed.clear()
+
+    def bridge(self):
+        if self._bridge is None:
+            try:
+                self._bridge = Bridge(self.bridge_path)
+            except (OSError, sqlite3.Error) as exc:
+                raise ValueError(f"无法打开本机软件协作队列：{exc}") from exc
+        return self._bridge
 
     def start(self):
         try:
@@ -610,6 +641,8 @@ class Desk:
     def _launch(self, configs, creation=None):
         self.stop.clear()
         self.running = True
+        if creation:
+            self.chat_focus = True
         self.status.set("协作运行中")
         self._controls()
         job = self.job
@@ -696,6 +729,7 @@ class Desk:
             messagebox.showerror("无法载入", str(e), parent=self.root)
             return
         self.job = job
+        self.chat_focus = True
         self._load_fields(job)
         self._clear_log()
         log_path = Path(job.path) / "events.txt"
@@ -724,6 +758,7 @@ class Desk:
     def _poll(self):
         self.cloud.poll()
         self.lite.poll()
+        self.software.poll()
         while True:
             try:
                 kind, value = self.queue.get_nowait()
@@ -765,6 +800,8 @@ class Desk:
             self.monitor.close()
         self.lite.close()
         self.cloud.disconnect()
+        if self._bridge is not None:
+            self._bridge.close()
         self.root.destroy()
 
 

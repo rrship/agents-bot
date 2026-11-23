@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 EXTRA_ACCOUNTS = {"DeepSeek": "DeepSeek Harness / dsh-baton", "GLM": "ZCode CLI"}
@@ -41,9 +42,12 @@ def extra_login(agent):
         raise ValueError("未知账号渠道")
 
 
-def run_json(argv, workdir, prompt=None, timeout=240):
+def run_json(argv, workdir, prompt=None, timeout=240, *, desktop_host=False):
     from providers import _account_env
-    result = subprocess.run(argv, cwd=workdir, env=_account_env(), input=prompt or "",
+    env = _account_env()
+    if desktop_host:
+        env["DSH_BATON_BACKEND"] = "host"
+    result = subprocess.run(argv, cwd=workdir, env=env, input=prompt or "",
                             capture_output=True, encoding="utf-8", errors="replace",
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=timeout)
     if result.returncode:
@@ -57,26 +61,40 @@ def run_json(argv, workdir, prompt=None, timeout=240):
     return data
 
 
-def extra_call(agent, model, prompt):
+def _wait_harness(argv, run_id, folder, stop, run):
+    deadline = time.monotonic() + 240
+    while True:
+        if stop is not None and stop.is_set():
+            raise InterruptedError("已停止等待 Harness 回复。")
+        seconds = 240 if stop is None else 3
+        result = run(argv + ["wait", run_id, "--timeout", str(seconds)], folder, timeout=seconds + 15)
+        if result.get("state") == "completed" and not result.get("timed_out"):
+            return result.get("final_text")
+        if stop is None or not result.get("timed_out") or time.monotonic() >= deadline:
+            raise RuntimeError(f"Harness 未完成本轮，请在客户端查看任务 {run_id}。")
+
+
+def extra_call(agent, model, prompt, *, stop=None, desktop_host=False):
     if model:
         raise ValueError(f"请在 {EXTRA_ACCOUNTS[agent]} 内选择模型，并留空工作台的账号模型栏。")
     argv = command(agent)
     with tempfile.TemporaryDirectory(prefix="agentdesk-account-") as temp:
         if agent == "DeepSeek":
+            from functools import partial
+            run = partial(run_json, desktop_host=True) if desktop_host else run_json
+            if stop is not None and stop.is_set():
+                raise InterruptedError("已暂停 Harness 派单。")
             request = "仅根据以下文字返回最终回复。请勿运行命令或编辑文件。\n" + prompt
-            sent = run_json(argv + ["send", "--cwd", temp, "-"], temp, request, 45)
+            sent = run(argv + ["send", "--cwd", temp, "-"], temp, request, 45)
             run_id = sent.get("run_id")
             if not isinstance(run_id, str) or not run_id or run_id.startswith("-"):
                 raise RuntimeError("dsh-baton 未返回 run_id，请检查 Harness 的插件状态。")
             try:
-                result = run_json(argv + ["wait", run_id, "--timeout", "240"], temp, timeout=255)
-                if result.get("state") != "completed" or result.get("timed_out"):
-                    raise RuntimeError(f"Harness 未完成本轮，请在客户端查看任务 {run_id}。")
-                text = result.get("final_text")
+                text = _wait_harness(argv, run_id, temp, stop, run)
             except Exception:
                 # Each program turn owns exactly one run; stop it before a later retry.
                 try:
-                    run_json(argv + ["cancel", run_id], temp, timeout=15)
+                    run(argv + ["cancel", run_id], temp, timeout=15)
                 except (OSError, RuntimeError, subprocess.SubprocessError):
                     pass
                 raise

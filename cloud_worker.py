@@ -70,7 +70,8 @@ def run_claim(rpc, lease, task, config, stopping):
                         from lite_agent import team_call
                         response["answer"] = team_call(config, prompt, stop=cancelled)
                     else:
-                        response["answer"] = call(lease["member"], config, prompt)
+                        local = dict(config, stop=cancelled) if config.get("mode") == "software" else config
+                        response["answer"] = call(lease["member"], local, prompt)
                 except Exception as error:
                     response["error"] = error
                 finally:

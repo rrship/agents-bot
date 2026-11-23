@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 
 from extra_accounts import EXTRA_ACCOUNTS, extra_call, extra_login
+from software_bridge import SOFTWARE_NAMES
 
 
 class ProviderError(RuntimeError):
@@ -24,7 +25,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _open = urllib.request.build_opener(_NoRedirect).open
 NAMES = ("GPT", "Gemini", "Claude", "DeepSeek", "Kimi", "GLM")
 BUILTIN = "内置 Agent"
-MEMBER_NAMES = (*NAMES, BUILTIN)
+MEMBER_NAMES = (*NAMES, BUILTIN, *SOFTWARE_NAMES)
 _CLI = {"GPT": ("codex", "@openai/codex"), "Gemini": ("gemini", "@google/gemini-cli"),
         "Claude": ("claude", "@anthropic-ai/claude-code"), "Kimi": ("kimi", "@moonshot-ai/kimi-code")}
 ACCOUNT_NAMES = tuple(name for name in NAMES if name in _CLI or name in EXTRA_ACCOUNTS)
@@ -256,6 +257,20 @@ def _api(agent, model, key, prompt):
 
 def call(agent, config, prompt):
     """Send a single independent turn; the engine supplies shared history."""
+    if agent in SOFTWARE_NAMES:
+        if config.get("mode") != "software":
+            raise ProviderError("请在「软件协作」配置这个成员。")
+        if config.get("transport") == "codex-native":
+            if agent != "Codex":
+                raise ProviderError("只有 Codex 软件成员可以使用 App Server。")
+            from codex_native import run
+            return _nonempty(run(prompt, stop=config.get("stop")))
+        if config.get("transport") == "baton":
+            if agent != "DeepSeek Harness":
+                raise ProviderError("当前软件没有 dsh-baton 接口。")
+            return _nonempty(extra_call("DeepSeek", "", prompt, stop=config.get("stop"), desktop_host=True))
+        options = {"on_claim": config["on_claim"]} if config.get("on_claim") else {}
+        return _nonempty(config["bridge"].request(agent, prompt, stop=config.get("stop"), **options))
     if agent == BUILTIN:
         if config.get("mode") != "api" or config.get("provider") not in NAMES:
             raise ProviderError("请为内置 Agent 绑定一个有效的 API 账号。")

@@ -78,8 +78,8 @@ def new_task(member, stage, assignment):
 def create(root, req):
     goal = text(req.get("goal"), 12_000, "任务目标")
     members = req.get("members")
-    if not isinstance(members, list) or not 2 <= len(members) <= 7:
-        raise ValueError("云团队需要 2 至 7 位成员")
+    if not isinstance(members, list) or not 2 <= len(members) <= 13:
+        raise ValueError("云团队需要 2 至 13 位成员")
     for member in members:
         text(member, 80, "成员名")
     if len(set(members)) != len(members):
