@@ -120,6 +120,22 @@ class AccountStore:
             return [dict(row) for row in db.execute(
                 "SELECT id,name,provider,model,key_env FROM profiles ORDER BY provider,name_fold,id")]
 
+    def opc_team(self):
+        from opc_runtime import checked_routes
+        with self._database() as db:
+            exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='opc_team'").fetchone()
+            if not exists:
+                return None
+            row = db.execute("SELECT routes FROM opc_team WHERE id=1").fetchone()
+            return checked_routes(json.loads(row[0])) if row else None
+
+    def save_opc_team(self, routes):
+        from opc_runtime import checked_routes
+        value = json.dumps(checked_routes(routes), ensure_ascii=False)
+        with self._database(write=True) as db:
+            db.execute("CREATE TABLE IF NOT EXISTS opc_team (id INTEGER PRIMARY KEY, routes TEXT NOT NULL)")
+            db.execute("INSERT OR REPLACE INTO opc_team VALUES (1,?)", (value,))
+
     @staticmethod
     def _row(db, profile_id):
         record = db.execute("SELECT * FROM profiles WHERE id=?", (profile_id,)).fetchone()

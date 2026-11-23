@@ -67,7 +67,7 @@ def validated_reply(app, prompt, raw):
                 any(not isinstance(v, str) or not v.strip() for v in items.values())):
             raise ValueError("请在 assignments 中为每位执行成员填写分工。")
     if "阶段=实现" in header or stage == "implement":
-        transfer = parse_handoff(reply, app, ctx.get("handoff_candidates", []))
+        transfer = parse_handoff(reply, ctx.get("opc_role", app), ctx.get("handoff_candidates", []))
         files = reply.get("files", {} if transfer else None)
         if not isinstance(files, dict) or any(not isinstance(v, str) for v in files.values()):
             raise ValueError("请在 files 中按相对路径提供完整的文件内容。")
@@ -177,6 +177,7 @@ class SoftwarePanel(ttk.Frame):
     def quick_team(self):
         if self.desk.job is not None or self.desk.running:
             return
+        self.desk.opc_routes = None
         for name, var in self.desk.member_vars.items():
             var.set(name in ("Codex", "Claude Desktop"))
         self.desk.team_mode.set("leader")

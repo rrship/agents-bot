@@ -2,9 +2,19 @@
 
 Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当组长、DeepSeek 写功能、Gemini 写测试，看它们如何分工、交接草稿并审阅同一份项目。工作台支持 GPT、Gemini、Claude、DeepSeek、Kimi 和 GLM。一个团队可以同时使用 API Key 和已登录的本机账号。
 
-**桌面版 v1.5.0 增加了软件成员。** 现在可以让 Codex 当组长、Claude Desktop 写一个模块、DeepSeek Harness 交付测试，再让 Codex 根据合并结果验收。Antigravity、ZCode 和其他支持本地 MCP 的 Harness 也可以加入同一个团队。将 `AgentsBot-v1.5.0-Windows-x64.zip` 完整解压到固定目录，双击 `AgentsBot.exe`。
+**桌面版 v1.6.0 新增「OPC 一人公司」。** 你负责给目标，项目经理负责拆单和验收，前端设计师、后端开发员和测试工程师按各自的技能手册交付。四个岗位可以共用一个 API 账号，也可以分别绑定不同模型或已经通过 MCP 连接的本地 AI 软件。
 
-[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.5.0/AgentsBot-v1.5.0-Windows-x64.zip) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.5.0/AgentsBot-v1.5.0-source.zip) · [下载安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.5.0/AgentsBot-Android.apk) · [v1.5.0 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.5.0)
+[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.6.0/AgentsBot-v1.6.0-Windows-x64.zip) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.6.0/AgentsBot-v1.6.0-source.zip) · [下载安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.6.0/AgentsBot-Android.apk) · [v1.6.0 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.6.0)
+
+## 用一个账号开一人公司
+
+1. 完整解压 Windows 便携包，双击 `AgentsBot.exe`。打开「OPC 一人公司」→「配置 API 账号」→「新建」，填写服务商、模型 ID 和 API Key。已保存的账号可以直接选用。
+2. 回到 OPC 页，从「统一连接」选该账号，点「应用到出勤员工」。点某个岗位旁的「看技能」可以阅读它实际收到的手册。希望由本机软件担任某个岗位时，在这一行选 `MCP · 软件名`，按「连接本地软件」的指引配置。
+3. 点「进入任务工作台」，选目录，给出目标，例如「做一个离线记账本，可以记收支、按月汇总、导出 CSV，并验证空账本和负数输入」。点「开始协作」后到团队对话里看派单和交付。使用 MCP 的岗位还需在对应软件中发送「复制领取指令」。
+
+![OPC 一人公司的四个岗位、工作连接与岗位手册示例](docs/images/opc-office.png)
+
+岗位行为来自随包内置的中文技能手册。项目经理和工程岗位的方法改编自 Matt Pocock 的工程技能，前端岗位另外使用 GitHub Awesome Copilot 的界面实现和审查方法。运行时会把当前员工的技能、项目资料和分工一起传给所选连接。[OPC 操作指南](使用说明.md#opc-一人公司) · [技能文件、上游版本和许可](opc_skills/README.md)
 
 ## 第一次让两个软件合作
 
@@ -29,6 +39,7 @@ Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当�
 
 | 你想做什么 | 从哪里开始 |
 | --- | --- |
+| 带一个懂产品、设计、开发和测试的 AI 小团队 | [用一个账号开一人公司](#用一个账号开一人公司) |
 | 把已经打开的软件会话拉进同一个项目 | [连接桌面软件](#第一次让两个软件合作) |
 | 只有一个 API Key，想直接分析文件或生成草稿 | [使用内置 Agent](#使用内置-agent) |
 | 在一台电脑上试用两个模型 | [完成第一个本地任务](#完成第一个本地任务) |

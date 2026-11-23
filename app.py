@@ -15,6 +15,9 @@ from bot_sidebar import BotRail
 from conversation_feed import ConversationFeed
 from software_bridge import Bridge, SOFTWARE_NAMES
 from software_ui import SoftwarePanel
+from opc_ui import OPCPanel
+from opc_runtime import resolve_configs
+from opc_skills import LEAD
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -57,6 +60,8 @@ class Desk:
         self.activity = deque(maxlen=100)
         self.stop = threading.Event()
         self.running = False
+        self.opc_routes = None
+        self._opc_initialized = False
         self.job = None
         self.active_checks = set()
         self.forms = {}
@@ -86,6 +91,8 @@ class Desk:
         self.tabs.add(self.cloud, text="云服务器")
         self.lite = LitePanel(self.tabs, self)
         self.tabs.add(self.lite, text="内置 Agent 与账号")
+        self.opc = OPCPanel(self.tabs, self)
+        self.tabs.add(self.opc, text="OPC 一人公司")
         self._navigation()
         self._controls()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -140,7 +147,7 @@ class Desk:
                                  state.get("leader"), self.activity)
 
     def _navigation(self):
-        self.icons = {name: ui.icon(self.root, name, ui.RAIL_TEXT) for name in ("tasks", "team", "software", "lite", "cloud", "phone")}
+        self.icons = {name: ui.icon(self.root, name, ui.RAIL_TEXT) for name in ("tasks", "team", "software", "opc", "lite", "cloud", "phone")}
         self.icons["mark"] = ui.icon(self.root, "mark", ui.SURFACE, 24)
         brand = tk.Frame(self.sidebar, bg=ui.RAIL)
         brand.pack(fill="x", padx=15, pady=(24, 30))
@@ -148,7 +155,7 @@ class Desk:
         tk.Label(brand, text="Agents Bot", bg=ui.RAIL, fg=ui.SURFACE,
                  font=("Segoe UI Semibold", 15)).pack(side="left", padx=(7, 0))
         self.nav_buttons = {}
-        for page, symbol in ((self.tasks, "tasks"), (self.software, "software"), (self.team, "team"),
+        for page, symbol in ((self.tasks, "tasks"), (self.opc, "opc"), (self.software, "software"), (self.team, "team"),
                              (self.lite, "lite"), (self.cloud, "cloud")):
             label = self.tabs.tab(page, "text")
             btn = self._rail_button(label, symbol, self.show_accounts if page is self.lite
@@ -170,12 +177,45 @@ class Desk:
 
     def _nav_state(self, _event=None):
         current = self.tabs.select()
+        if current == str(self.opc):
+            self.opc.refresh()
+            if not self._opc_initialized:
+                self._opc_initialized = True
+                try:
+                    saved = self.account_store.opc_team()
+                    if saved:
+                        self.opc.restore(saved)
+                except (ValueError, OSError, sqlite3.Error) as exc:
+                    messagebox.showerror("读取 OPC 岗位配置", str(exc), parent=self.root)
         in_bot = current == str(self.lite) and self.lite.active_bot is not None
         for page, btn in self.nav_buttons.items():
             selected = page == current and not in_bot
             bg = ui.RAIL_ACTIVE if selected else ui.RAIL
             btn.configure(bg=bg, highlightbackground=bg, fg=ui.SURFACE if selected else ui.RAIL_TEXT)
         self.bots.set_active(self.lite.active_bot["id"] if in_bot else None)
+
+    def use_opc_team(self):
+        if self.running or (self.job and "opc_routes" not in self.job.state):
+            return
+        try:
+            routes = self.opc.selection()
+            if self.job and routes != self.job.state["opc_routes"]:
+                self.job.rebind_opc(routes)
+            self.account_store.save_opc_team(routes)
+        except (ValueError, RuntimeError, OSError, sqlite3.Error) as exc:
+            messagebox.showerror("配置 OPC 员工", str(exc), parent=self.root)
+            return
+        self.opc_routes = routes
+        self._opc_initialized = True
+        self._controls()
+        self.tabs.select(self.tasks)
+
+    def use_regular_team(self):
+        if self.running or self.job:
+            return
+        self.opc_routes = None
+        self._controls()
+        self.tabs.select(self.team)
 
     def show_bot(self, bot):
         if self.lite.open_bot(bot) is False:
@@ -255,8 +295,11 @@ class Desk:
         self.smoke = self._text(self.check_fields, 1)
         self.smoke.grid(row=3, sticky="ew")
         self.check_fields.grid_remove()
-        ttk.Label(left, text="参与成员").grid(row=7, sticky="w", pady=(9, 3))
-        self.team_link = ttk.Button(left, command=lambda: self.tabs.select(self.team))
+        roster_title = ttk.Frame(left)
+        roster_title.grid(row=7, sticky="ew", pady=(6, 3))
+        ttk.Label(roster_title, text="参与成员").pack(side="left")
+        self.regular_link = ttk.Button(roster_title, text="切换常规团队", command=self.use_regular_team)
+        self.team_link = ttk.Button(left, command=lambda: self.tabs.select(self.opc if self.opc_routes else self.team))
         self.team_link.grid(row=8, sticky="ew")
         self.start_button = ttk.Button(left, text="开始协作", style="Accent.TButton", command=self.start)
         self.start_button.grid(row=9, sticky="ew", pady=(10, 0))
@@ -309,7 +352,7 @@ class Desk:
             self.settings_toggle.configure(text="展开任务设置")
             members = self._members()
             role = f"组长 {self.leader.get()}" if self.team_mode.get() == "leader" else "平等协作"
-            self.task_summary.set(f"{len(members)} 位成员   ·   {role}")
+            self.task_summary.set(f"OPC · {len(self.opc_routes)} 位员工" if self.opc_routes else f"{len(members)} 位成员   ·   {role}")
             self.summary_label.pack(side="left", padx=10)
         else:
             self.summary_label.pack_forget()
@@ -489,7 +532,8 @@ class Desk:
         summary = "、".join(members) if len(members) <= 3 else f"{len(members)} 位成员"
         summary = summary or "未选择成员"
         role = f"组长：{self.leader.get()}" if leader_mode else "平等协作"
-        self.team_link.configure(text=f"{summary}  ·  {role}  ›")
+        label = f"OPC 一人公司  ·  {len(self.opc_routes)} 位员工  ›" if self.opc_routes else f"{summary}  ·  {role}  ›"
+        self.team_link.configure(text=label)
         for widget in self.team_controls:
             widget.configure(state="normal" if editable else "disabled")
 
@@ -566,6 +610,12 @@ class Desk:
         self._sync_team()
         self._task_layout()
         new = self.job is None and not self.running
+        if self.opc_routes and new:
+            self.regular_link.pack(side="right")
+        else:
+            self.regular_link.pack_forget()
+        self.opc.set_locked(self.running or bool(self.job and ("opc_routes" not in self.job.state or
+                            self.job.state["status"] in {"完成", "已取消", "待人工验收"})), self.job is not None)
         self.start_button.configure(state="normal" if new else "disabled")
         self.browse.configure(state="normal" if new else "disabled")
         self.folder_entry.configure(state="normal" if new else "disabled")
@@ -619,21 +669,29 @@ class Desk:
             smoke = parse_commands(self.smoke.get("1.0", "end"))
             if bool(checks) != bool(smoke):
                 raise ValueError("自动验收需要同时填写测试和冒烟检查。两栏均留空可采用人工验收。")
-            members = self._members()
-            if len(members) < 2:
-                raise ValueError("请在“成员与连接”至少选择两位成员。")
-            leader = self.leader.get() if self.team_mode.get() == "leader" else None
-            configs = {name: self._config(name) for name in members}
-        except ValueError as e:
+            if self.opc_routes:
+                configs = resolve_configs(self.opc_routes, self.account_store, self.bridge)
+                creation = (root, goal, checks + smoke, list(self.opc_routes), LEAD, self.opc_routes)
+            else:
+                members = self._members()
+                if len(members) < 2:
+                    raise ValueError("请在“成员与连接”至少选择两位成员。")
+                leader = self.leader.get() if self.team_mode.get() == "leader" else None
+                configs = {name: self._config(name) for name in members}
+                creation = (root, goal, checks + smoke, members, leader)
+        except (ValueError, OSError, sqlite3.Error) as e:
             messagebox.showerror("无法启动", str(e), parent=self.root)
             return
         self._clear_log()
-        self._launch(configs, (root, goal, checks + smoke, members, leader))
+        self._launch(configs, creation)
 
     def continue_job(self):
         try:
-            configs = {name: self._config(name) for name in self.job.state.get("members", DEFAULT_MEMBERS)}
-        except ValueError as e:
+            if self.opc_routes:
+                configs = resolve_configs(self.opc_routes, self.account_store, self.bridge)
+            else:
+                configs = {name: self._config(name) for name in self.job.state.get("members", DEFAULT_MEMBERS)}
+        except (ValueError, OSError, sqlite3.Error) as e:
             messagebox.showerror("连接设置", str(e), parent=self.root)
             return
         self._launch(configs)
@@ -705,12 +763,18 @@ class Desk:
     def _load_fields(self, job):
         state = job.state
         members = state.get("members", DEFAULT_MEMBERS)
-        for name, member in self.member_vars.items():
-            member.set(name in members)
-        leader = state.get("leader")
-        self.team_mode.set("leader" if leader else "peer")
-        if leader:
-            self.leader.set(leader)
+        self.opc_routes = state.get("opc_routes")
+        if self.opc_routes:
+            self.opc.refresh()
+            self.opc.restore(self.opc_routes)
+            self._opc_initialized = True
+        else:
+            for name, member in self.member_vars.items():
+                member.set(name in members)
+            leader = state.get("leader")
+            self.team_mode.set("leader" if leader else "peer")
+            if leader:
+                self.leader.set(leader)
         self.project.set(str(state.get("root", state.get("source", ""))))
         commands = [json.dumps(cmd, ensure_ascii=False) for cmd in state.get("checks", [])]
         for field, value in ((self.goal, state["goal"]), (self.tests, "\n".join(commands[:-1])),

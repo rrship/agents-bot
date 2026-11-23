@@ -261,6 +261,9 @@ class CloudPanel(ttk.Frame):
         self._controls()
 
     def create(self):
+        if self.desk.opc_routes:
+            self._error("OPC 员工在这台电脑的任务工作台接单。要创建 SSH 房间，请在新任务中切换常规团队。")
+            return
         goal = self.desk.goal.get("1.0", "end").strip()
         roster = self.desk._members()
         leader = self.desk.leader.get() if self.desk.team_mode.get() == "leader" else None

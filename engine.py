@@ -109,7 +109,7 @@ class Job:
         self.state.setdefault("leader", None)
 
     @classmethod
-    def create(cls, root, goal, checks, members=None, leader=None):
+    def create(cls, root, goal, checks, members=None, leader=None, opc_routes=None):
         root = Path(root).resolve(strict=True)
         if not root.is_dir() or not goal.strip():
             raise ValueError("请选择项目目录并填写任务")
@@ -124,6 +124,11 @@ class Job:
         for cmd in checks:
             if not isinstance(cmd, list) or not cmd or not all(isinstance(x, str) and x for x in cmd):
                 raise ValueError("每条验收命令应为非空参数列表")
+        opc = {}
+        if opc_routes is not None:
+            from opc_runtime import checked_routes, skill_snapshot
+            opc["opc_routes"] = checked_routes(opc_routes, members, leader)
+            opc["opc_roles"] = skill_snapshot(members)
         parent = root / ".agentdesk" / "jobs"
         if parent.resolve() != parent:
             raise ValueError("任务目录不能指向外部位置")
@@ -131,7 +136,7 @@ class Job:
         path.mkdir(parents=True)
         shutil.copytree(root, path / "baseline", ignore=ignored)
         job = cls(path, dict(root=str(root), goal=goal, checks=checks, status="就绪", round=0,
-                             members=list(members), leader=leader, answers={}, messages=[], feedback=""))
+                             members=list(members), leader=leader, answers={}, messages=[], feedback="", **opc))
         job.save()
         return job
 
@@ -151,6 +156,17 @@ class Job:
             if self.state["status"] not in {"完成", "待人工验收"}:
                 self.state["status"] = "已取消"
                 self.save()
+
+    def rebind_opc(self, routes):
+        """Replace transport references while preserving the job's roster, skills and answers."""
+        from opc_runtime import checked_routes
+        with exclusive(self.path / "run.lock"):
+            self.state = self.load(self.path).state
+            if "opc_routes" not in self.state or self.state["status"] in {"完成", "已取消", "待人工验收"}:
+                raise ValueError("请选择尚未结束的 OPC 任务来更换员工连接。")
+            clean = checked_routes(routes, self.state["members"], self.state["leader"])
+            self.state["opc_routes"] = clean
+            self.save()
 
     def add_feedback(self, text):
         if not text.strip():
@@ -210,17 +226,31 @@ class Job:
         members = s["members"]
         leader = s["leader"]
         workers = [name for name in members if name != leader]
+        opc = s.get("opc_roles")
+        if opc is not None:
+            from opc_runtime import checked_routes, employee_prompt
+            routes = checked_routes(s.get("opc_routes"), members, leader)
+            if set(opc) != set(members) or any(
+                    not isinstance(configs.get(role), dict) or configs[role].get("opc_binding") != ref
+                    for role, ref in routes.items()):
+                raise ValueError("OPC 员工连接已更改，请重新读取任务并确认各岗位的连接。")
+
+        def make_prompt(member, header, context):
+            if opc is not None:
+                return employee_prompt(member, opc, header, context)
+            return bounded_prompt(header, context)
 
         def dispatch(pool, member, stage, prompt):
             config = configs[member]
+            runtime = config["runtime_member"] if opc is not None else member
             if isinstance(config, dict) and config.get("mode") == "software":
                 config = dict(config, stop=stop)
                 if config.get("transport") in {"baton", "codex-native"}:
                     log(f"工作台 → {member} [{stage} · 原生派单] 正在连接 {member}。")
                 else:
-                    log(f"工作台 → {member} [{stage} · 等待领取] 在软件会话中领取，或打开「软件协作」手动交接。")
+                    log(f"工作台 → {member} [{stage} · 等待领取] 在 {runtime} 会话中领取，或打开「软件协作」手动交接。")
                     config["on_claim"] = lambda: log(f"{member} → 工作台 [{stage} · 已领取] 正在处理任务。")
-            return pool.submit(call, member, config, prompt)
+            return pool.submit(call, runtime, config, prompt)
 
         def stage_context(root):
             return dict(goal=s["goal"], files=files_at(root), messages=s["messages"][-16:],
@@ -237,7 +267,7 @@ class Job:
                     if agent in batch:
                         continue
                     ctx = dict(context, assignment=(personal or {}).get(agent))
-                    prompt = bounded_prompt(f"你是{agent}。阶段={stage}。{instruction}。只输出 JSON。", ctx)
+                    prompt = make_prompt(agent, f"你是{agent}。阶段={stage}。{instruction}。只输出 JSON。", ctx)
                     futures[dispatch(pool, agent, stage, prompt)] = agent
                 errors = []
                 for future in as_completed(futures):
@@ -317,7 +347,7 @@ class Job:
                         if trail:
                             ctx.update(summary=trail[-1]["summary"], received_from=trail[-1]["sender"],
                                        checkpoint_paths=list(drafts), files={**context["files"], **drafts})
-                        prompt = bounded_prompt(
+                        prompt = make_prompt(actor,
                             f'你是{actor}。阶段=实现。按 assignment 完成分工，返回 '
                             '{"message":"交付说明","files":{"相对路径":"完整文件内容"}}。'
                             '只提交改动的文本文件。已交接的草稿会自动保留。' + HANDOFF_INSTRUCTION + '只输出 JSON。',
