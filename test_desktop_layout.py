@@ -5,6 +5,7 @@ import os
 from unittest.mock import patch
 
 from app import Desk
+from team_modes import STANDARD, OPC
 
 
 class DesktopLayoutTests(unittest.TestCase):
@@ -44,10 +45,26 @@ class DesktopLayoutTests(unittest.TestCase):
         desk.checks_button.invoke()
         self.root.update_idletasks()
         self.assertTrue(desk.check_fields.winfo_ismapped())
-        for widget in (desk.goal, desk.tests, desk.smoke, desk.start_button):
-            self.assertGreater(widget.winfo_height(), 14)
-            self.assertLessEqual(widget.winfo_rooty() + widget.winfo_height(),
-                                 self.root.winfo_rooty() + self.root.winfo_height())
+        for mode in (STANDARD, OPC):
+            with self.subTest(mode=mode):
+                desk.mode_buttons[mode].invoke()
+                if mode == OPC:
+                    self.root.update()
+                    desk.opc.restore({role: {"kind": "mcp", "target": "Codex"}
+                                      for role in ("项目经理", "测试工程师")})
+                    desk.opc.start_button.invoke()
+                self.root.update()
+                self.assertEqual(desk.tabs.select(), str(desk.tasks))
+                self.assertEqual(desk.task_mode.get(), mode)
+                for widget in (desk.goal, desk.tests, desk.smoke, desk.start_button):
+                    self.assertTrue(widget.winfo_ismapped())
+                    self.assertGreater(widget.winfo_height(), 14)
+                    self.assertLessEqual(widget.winfo_rooty() + widget.winfo_height(),
+                                         self.root.winfo_rooty() + self.root.winfo_height())
+                for widget in (desk.goal, desk.tests, desk.smoke):
+                    line = widget.dlineinfo("1.0")
+                    self.assertIsNotNone(line)
+                    self.assertLessEqual(line[1] + line[3], widget.winfo_height())
         desk.tests.insert("1.0", '["python", "test.py"]')
         desk.checks_button.invoke()
         self.assertEqual(desk.tests.get("1.0", "end-1c"), '["python", "test.py"]')

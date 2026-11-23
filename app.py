@@ -24,11 +24,13 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from engine import Job
+from team_modes import STANDARD, OPC, job_mode
 from extra_accounts import EXTRA_ACCOUNTS
 from providers import ACCOUNT_NAMES, BUILTIN, ENV_KEYS, MEMBER_NAMES, NAMES, call, launch_login
 
 
 DEFAULT_MEMBERS = ("GPT", "Gemini")
+TASK_MODES = {STANDARD: "常规多智能体协作", OPC: "OPC 一人公司"}
 MODES = {"账号登录": "account", "API Key": "api"}
 FONT = ui.FONT
 
@@ -60,6 +62,7 @@ class Desk:
         self.activity = deque(maxlen=100)
         self.stop = threading.Event()
         self.running = False
+        self.task_mode = tk.StringVar(value=STANDARD)
         self.opc_routes = None
         self._opc_initialized = False
         self.job = None
@@ -158,8 +161,7 @@ class Desk:
         for page, symbol in ((self.tasks, "tasks"), (self.opc, "opc"), (self.software, "software"), (self.team, "team"),
                              (self.lite, "lite"), (self.cloud, "cloud")):
             label = self.tabs.tab(page, "text")
-            btn = self._rail_button(label, symbol, self.show_accounts if page is self.lite
-                                    else lambda p=page: self.tabs.select(p))
+            btn = self._rail_button(label, symbol, lambda p=page: self._open_page(p))
             btn.pack(fill="x", padx=8, pady=2)
             self.nav_buttons[str(page)] = btn
         self._rail_button("手机监控", "phone", self.mobile_settings).pack(side="bottom", fill="x", padx=8, pady=(4, 16))
@@ -174,6 +176,15 @@ class Desk:
                          activebackground=ui.RAIL_ACTIVE, activeforeground=ui.SURFACE, cursor="hand2",
                          borderwidth=0, highlightthickness=1, highlightcolor=ui.RAIL_SUB,
                          highlightbackground=ui.RAIL, padx=8, pady=8)
+
+    def _open_page(self, page):
+        if page is self.lite:
+            self.show_accounts()
+            return
+        if self.job is None and not self.running and page in (self.opc, self.team):
+            self.task_mode.set(OPC if page is self.opc else STANDARD)
+            self._controls()
+        self.tabs.select(page)
 
     def _nav_state(self, _event=None):
         current = self.tabs.select()
@@ -195,7 +206,7 @@ class Desk:
         self.bots.set_active(self.lite.active_bot["id"] if in_bot else None)
 
     def use_opc_team(self):
-        if self.running or (self.job and "opc_routes" not in self.job.state):
+        if self.running or (self.job and job_mode(self.job.state) != OPC):
             return
         try:
             routes = self.opc.selection()
@@ -206,16 +217,17 @@ class Desk:
             messagebox.showerror("配置 OPC 员工", str(exc), parent=self.root)
             return
         self.opc_routes = routes
+        self.task_mode.set(OPC)
         self._opc_initialized = True
         self._controls()
         self.tabs.select(self.tasks)
 
-    def use_regular_team(self):
+    def _pick_task_mode(self):
         if self.running or self.job:
             return
-        self.opc_routes = None
         self._controls()
-        self.tabs.select(self.team)
+        if self.task_mode.get() == OPC and not self.opc_routes:
+            self.tabs.select(self.opc)
 
     def show_bot(self, bot):
         if self.lite.open_bot(bot) is False:
@@ -241,14 +253,23 @@ class Desk:
     def _task_view(self):
         page = self.tasks
         page.columnconfigure(0, weight=1)
-        page.rowconfigure(1, weight=1)
+        page.rowconfigure(2, weight=1)
         head = tk.Frame(page, bg=ui.BG)
         head.grid(row=0, column=0, sticky="ew", padx=18, pady=(17, 13))
         tk.Label(head, text="任务工作台", bg=ui.BG, fg=ui.INK, font=(FONT, 21, "bold")).pack(side="left")
         tk.Label(head, textvariable=self.status, bg=ui.SUBTLE, fg=ui.INK, padx=10, pady=4,
                  font=(FONT, 9)).pack(side="right")
+        selector = ttk.Frame(page, padding=(8, 3))
+        selector.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 7))
+        ttk.Label(selector, text="任务模式").pack(side="left", padx=(0, 12))
+        self.mode_buttons = {}
+        for mode, label in TASK_MODES.items():
+            button = ttk.Radiobutton(selector, text=label, variable=self.task_mode,
+                                     value=mode, command=self._pick_task_mode)
+            button.pack(side="left", padx=(0, 16))
+            self.mode_buttons[mode] = button
         cards = self.task_cards = tk.Frame(page, bg=ui.BG)
-        cards.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
+        cards.grid(row=2, column=0, sticky="nsew", padx=16, pady=(0, 16))
         cards.rowconfigure(0, weight=1)
         cards.columnconfigure(0, weight=10, uniform="columns")
         cards.columnconfigure(1, weight=11, uniform="columns")
@@ -298,8 +319,7 @@ class Desk:
         roster_title = ttk.Frame(left)
         roster_title.grid(row=7, sticky="ew", pady=(6, 3))
         ttk.Label(roster_title, text="参与成员").pack(side="left")
-        self.regular_link = ttk.Button(roster_title, text="切换常规团队", command=self.use_regular_team)
-        self.team_link = ttk.Button(left, command=lambda: self.tabs.select(self.opc if self.opc_routes else self.team))
+        self.team_link = ttk.Button(left, command=lambda: self.tabs.select(self.opc if self.task_mode.get() == OPC else self.team))
         self.team_link.grid(row=8, sticky="ew")
         self.start_button = ttk.Button(left, text="开始协作", style="Accent.TButton", command=self.start)
         self.start_button.grid(row=9, sticky="ew", pady=(10, 0))
@@ -352,7 +372,8 @@ class Desk:
             self.settings_toggle.configure(text="展开任务设置")
             members = self._members()
             role = f"组长 {self.leader.get()}" if self.team_mode.get() == "leader" else "平等协作"
-            self.task_summary.set(f"OPC · {len(self.opc_routes)} 位员工" if self.opc_routes else f"{len(members)} 位成员   ·   {role}")
+            self.task_summary.set(f"{len(self.opc_routes)} 位员工   ·   项目经理统筹" if self.task_mode.get() == OPC
+                                  else f"{len(members)} 位成员   ·   {role}")
             self.summary_label.pack(side="left", padx=10)
         else:
             self.summary_label.pack_forget()
@@ -378,7 +399,9 @@ class Desk:
             self.checks_button.configure(text="▾  自动验收命令")
 
     def _team_view(self):
-        ttk.Label(self.team, text="成员与连接", style="Title.TLabel").pack(anchor="w", pady=(0, 6))
+        heading = ttk.Frame(self.team)
+        heading.pack(fill="x", pady=(0, 6))
+        ttk.Label(heading, text="常规团队 · 成员与连接", style="Title.TLabel").pack(side="left")
         ttk.Label(self.team, text="至少选择两位成员。模型、内置 Agent 和桌面软件可以混合组队。", style="Hint.TLabel").pack(anchor="w")
         roster = ttk.Frame(self.team)
         roster.pack(fill="x", pady=(6, 8))
@@ -460,6 +483,8 @@ class Desk:
         return self._account_store
 
     def apply_profile(self, profile_id, builtin=True, bot_id=None):
+        if self.task_mode.get() == OPC:
+            raise ValueError("要给 OPC 员工分配账号，请在「OPC 一人公司」的岗位行选择该账号。")
         profile = next((row for row in self.account_store.list_profiles() if row["id"] == profile_id), None)
         if profile is None:
             raise ValueError("账号已删除，请重新选择。")
@@ -522,7 +547,7 @@ class Desk:
         members = self._members()
         count = sum(name in SOFTWARE_NAMES for name in members)
         self.software_link.configure(text=f"软件成员 ({count})…")
-        editable = self.job is None and not self.running
+        editable = self.job is None and not self.running and self.task_mode.get() == STANDARD
         leader_mode = self.team_mode.get() == "leader"
         self.leader_box.configure(values=members, state="readonly" if editable and leader_mode and members else "disabled")
         if self.leader.get() not in members:
@@ -532,7 +557,10 @@ class Desk:
         summary = "、".join(members) if len(members) <= 3 else f"{len(members)} 位成员"
         summary = summary or "未选择成员"
         role = f"组长：{self.leader.get()}" if leader_mode else "平等协作"
-        label = f"OPC 一人公司  ·  {len(self.opc_routes)} 位员工  ›" if self.opc_routes else f"{summary}  ·  {role}  ›"
+        if self.task_mode.get() == OPC:
+            label = f"OPC 一人公司  ·  {len(self.opc_routes)} 位员工  ›" if self.opc_routes else "配置 OPC 岗位与连接  ›"
+        else:
+            label = f"{summary}  ·  {role}  ›"
         self.team_link.configure(text=label)
         for widget in self.team_controls:
             widget.configure(state="normal" if editable else "disabled")
@@ -610,11 +638,12 @@ class Desk:
         self._sync_team()
         self._task_layout()
         new = self.job is None and not self.running
-        if self.opc_routes and new:
-            self.regular_link.pack(side="right")
-        else:
-            self.regular_link.pack_forget()
-        self.opc.set_locked(self.running or bool(self.job and ("opc_routes" not in self.job.state or
+        for button in self.mode_buttons.values():
+            button.configure(state="normal" if new else "disabled")
+        opc = self.task_mode.get() == OPC
+        self.software.set_opc_context(opc)
+        self.opc.connect_button.configure(state="normal" if opc else "disabled")
+        self.opc.set_locked(self.running or bool(self.job and (not opc or
                             self.job.state["status"] in {"完成", "已取消", "待人工验收"})), self.job is not None)
         self.start_button.configure(state="normal" if new else "disabled")
         self.browse.configure(state="normal" if new else "disabled")
@@ -669,7 +698,10 @@ class Desk:
             smoke = parse_commands(self.smoke.get("1.0", "end"))
             if bool(checks) != bool(smoke):
                 raise ValueError("自动验收需要同时填写测试和冒烟检查。两栏均留空可采用人工验收。")
-            if self.opc_routes:
+            if self.task_mode.get() == OPC:
+                if not self.opc_routes:
+                    self.tabs.select(self.opc)
+                    raise ValueError("请在「OPC 一人公司」配置出勤员工和连接，再点「进入任务工作台」。")
                 configs = resolve_configs(self.opc_routes, self.account_store, self.bridge)
                 creation = (root, goal, checks + smoke, list(self.opc_routes), LEAD, self.opc_routes)
             else:
@@ -687,8 +719,8 @@ class Desk:
 
     def continue_job(self):
         try:
-            if self.opc_routes:
-                configs = resolve_configs(self.opc_routes, self.account_store, self.bridge)
+            if job_mode(self.job.state) == OPC:
+                configs = resolve_configs(self.job.state["opc_routes"], self.account_store, self.bridge)
             else:
                 configs = {name: self._config(name) for name in self.job.state.get("members", DEFAULT_MEMBERS)}
         except (ValueError, OSError, sqlite3.Error) as e:
@@ -697,6 +729,7 @@ class Desk:
         self._launch(configs)
 
     def _launch(self, configs, creation=None):
+        mode = self.task_mode.get()
         self.stop.clear()
         self.running = True
         if creation:
@@ -707,7 +740,7 @@ class Desk:
 
         def work():
             try:
-                active = Job.create(*creation) if creation else job
+                active = Job.create(*creation, mode=mode) if creation else job
                 self.queue.put(("job", active))
                 result = active.run(configs, lambda s: self.queue.put(("log", str(s))), self.stop)
                 self.queue.put(("done", str(result)))
@@ -763,8 +796,9 @@ class Desk:
     def _load_fields(self, job):
         state = job.state
         members = state.get("members", DEFAULT_MEMBERS)
-        self.opc_routes = state.get("opc_routes")
-        if self.opc_routes:
+        self.task_mode.set(job_mode(state))
+        if self.task_mode.get() == OPC:
+            self.opc_routes = state["opc_routes"]
             self.opc.refresh()
             self.opc.restore(self.opc_routes)
             self._opc_initialized = True

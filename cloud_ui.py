@@ -15,6 +15,7 @@ from desktop_style import style_text
 from engine import hidden
 from lite_agent import bot_instructions
 from providers import BUILTIN, ENV_KEYS, MEMBER_NAMES
+from team_modes import OPC
 
 
 STATUS = {"active": "进行中", "complete": "已完成", "blocked": "待整改",
@@ -261,7 +262,7 @@ class CloudPanel(ttk.Frame):
         self._controls()
 
     def create(self):
-        if self.desk.opc_routes:
+        if self.desk.task_mode.get() == OPC:
             self._error("OPC 员工在这台电脑的任务工作台接单。要创建 SSH 房间，请在新任务中切换常规团队。")
             return
         goal = self.desk.goal.get("1.0", "end").strip()

@@ -1,10 +1,17 @@
 # Agents Bot
 
-Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当组长、DeepSeek 写功能、Gemini 写测试，看它们如何分工、交接草稿并审阅同一份项目。工作台支持 GPT、Gemini、Claude、DeepSeek、Kimi 和 GLM。一个团队可以同时使用 API Key 和已登录的本机账号。
+Agents Bot 是一个 Windows 多智能体开发工作台。新建任务时选择 **常规多智能体协作** 或 **OPC 一人公司**。两种模式都能使用 API 账号和本地 MCP 软件，在团队对话中查看分工、草稿、交接和验收结果。
 
-**桌面版 v1.6.0 新增「OPC 一人公司」。** 你负责给目标，项目经理负责拆单和验收，前端设计师、后端开发员和测试工程师按各自的技能手册交付。四个岗位可以共用一个 API 账号，也可以分别绑定不同模型或已经通过 MCP 连接的本地 AI 软件。
+[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.6.1/AgentsBot-v1.6.1-Windows-x64.zip) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.6.1/AgentsBot-v1.6.1-source.zip) · [下载安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.6.1/AgentsBot-Android.apk) · [v1.6.1 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.6.1)
 
-[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.6.0/AgentsBot-v1.6.0-Windows-x64.zip) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.6.0/AgentsBot-v1.6.0-source.zip) · [下载安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.6.0/AgentsBot-Android.apk) · [v1.6.0 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.6.0)
+| 工作模式 | 你决定什么 | 团队如何工作 |
+| --- | --- | --- |
+| 常规多智能体协作 | 自选模型、桌面软件或内置 Agent 组队，可指定任意一位成员当组长 | 选「平等协作」让成员分工互审，或选「组长统筹」由组长派单和复核。支持本地项目及 SSH 云房间。[常规团队入门](#完成第一个本地任务) |
+| OPC 一人公司 | 以老板身份定目标和验收条件，选择出勤岗位，为每个岗位指定连接 | 项目经理固定负责派单和验收，前端、后端、测试员工按各自的内置技能手册，在本机工作台交付。各岗位可以共用一个账号或一款软件。[OPC 入门](#用一个账号开一人公司) |
+
+![工作台顶部的任务模式选择与下方的任务设置](docs/images/work-modes.png)
+
+在工作台顶部的「任务模式」选择团队。每个任务保留创建时的模式。用「载入任务…」打开旧项目，会回到原有的协作方式。要尝试另一种方式，可以在新任务中重新选择。[选择模式与恢复任务](使用说明.md#选择工作模式)
 
 ## 用一个账号开一人公司
 
@@ -100,6 +107,10 @@ Agents Bot 是一个 Windows 多智能体开发工作台。你可以让 GPT 当�
 ## 从源码运行
 
 使用带 Tk 的 Python 3.11 或更新版本，在项目目录运行 `python app.py`。运行自动测试使用 `python -m unittest discover -v`。测试使用模拟模型回复，真实账号或密钥可在工作台用「测试连接」核验。[完整中文使用说明](使用说明.md)
+
+### 后续开发方向
+
+常规协作侧重模型和软件接入、自由组队、组长调度与 SSH 云房间。OPC 侧重员工岗位、技能手册、岗位分工与项目经理验收。提交需求或问题时可注明所属模式。账号管理、MCP 任务收发、任务保存与交付检查属于共用能力，改动时应分别用一个常规任务和一个 OPC 任务验证。
 
 ## 项目参考
 

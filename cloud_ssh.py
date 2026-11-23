@@ -15,7 +15,8 @@ import threading
 
 WIRE_LIMIT = 2_000_000
 RUNTIME_FILES = ("cloud_room.py", "cloud_worker.py", "cloud_daemon.py", "handoff.py",
-                 "engine.py", "providers.py", "extra_accounts.py", "lite_agent.py", "software_bridge.py")
+                 "engine.py", "providers.py", "extra_accounts.py", "lite_agent.py", "software_bridge.py",
+                 "team_modes.py")
 
 
 def runtime_bundle(source=None):

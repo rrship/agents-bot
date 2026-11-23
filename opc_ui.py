@@ -154,10 +154,6 @@ class OPCPanel(ttk.Frame):
         route = self.bindings.get(self.active_role)
         if route and route[0] == "mcp":
             app.app_name.set(route[1])
-            if route[1] == "DeepSeek Harness":
-                app.harness_mode.set("mcp")
-            elif route[1] == "Codex":
-                app.codex_mode.set("mcp")
         self.desk.tabs.select(app)
 
     def show_skill(self, role):

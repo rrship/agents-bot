@@ -4,6 +4,8 @@ on:
     paths:
       - "cloud_*.py"
       - "test_cloud_*.py"
+      - "team_modes.py"
+      - "engine.py"
       - "handoff.py"
       - "providers.py"
       - ".github/workflows/cloud.yml"

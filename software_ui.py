@@ -87,6 +87,7 @@ class SoftwarePanel(ttk.Frame):
     def __init__(self, parent, desk):
         super().__init__(parent, padding=16)
         self.desk = desk
+        self.opc_context = False
         self.client = "manual-" + uuid4().hex
         self.tickets = {}
         self.notes = {}
@@ -105,8 +106,9 @@ class SoftwarePanel(ttk.Frame):
                                  style="Accent.TButton")
         self.preset.pack(side="right")
         desk.team_controls.append(self.preset)
-        ttk.Label(self, text="参与团队的软件", style="Section.TLabel").grid(row=1, sticky="w")
-        members = ttk.Frame(self)
+        self.members_title = ttk.Label(self, text="参与常规团队的软件", style="Section.TLabel")
+        self.members_title.grid(row=1, sticky="w")
+        members = self.members_frame = ttk.Frame(self)
         members.grid(row=2, sticky="ew", pady=(3, 7))
         self.checks = {}
         for i, name in enumerate(SOFTWARE_NAMES):
@@ -175,14 +177,27 @@ class SoftwarePanel(ttk.Frame):
             self.status_label.configure(wraplength=width)
 
     def quick_team(self):
-        if self.desk.job is not None or self.desk.running:
+        if self.desk.job is not None or self.desk.running or self.opc_context:
             return
-        self.desk.opc_routes = None
         for name, var in self.desk.member_vars.items():
             var.set(name in ("Codex", "Claude Desktop"))
         self.desk.team_mode.set("leader")
         self.desk.leader.set("Codex")
         self.desk.tabs.select(self.desk.tasks)
+
+    def set_opc_context(self, enabled):
+        if self.opc_context == enabled:
+            return
+        self.opc_context = enabled
+        if enabled:
+            self.members_title.grid_remove()
+            self.members_frame.grid_remove()
+            self.preset.pack_forget()
+        else:
+            self.members_title.grid()
+            self.members_frame.grid()
+            self.preset.pack(side="right")
+        self.render()
 
     def config(self, name):
         if name not in SOFTWARE_NAMES:
@@ -194,18 +209,18 @@ class SoftwarePanel(ttk.Frame):
         return {"mode": "software", "bridge": self.desk.bridge()}
 
     def native_selected(self, app):
-        return ((app == "DeepSeek Harness" and self.harness_mode.get() == "baton")
+        return not self.opc_context and ((app == "DeepSeek Harness" and self.harness_mode.get() == "baton")
                 or (app == "Codex" and self.codex_mode.get() == "codex-native"))
 
     def render(self, *_):
         app = self.app_name.get()
         deepseek = app == "DeepSeek Harness"
         native = self.native_selected(app)
-        if app == "Codex":
+        if app == "Codex" and not self.opc_context:
             self.codex_routes.grid()
         else:
             self.codex_routes.grid_remove()
-        if deepseek:
+        if deepseek and not self.opc_context:
             self.routes.grid()
         else:
             self.routes.grid_remove()

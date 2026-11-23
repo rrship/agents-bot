@@ -91,7 +91,7 @@ class OPCPanelTests(unittest.TestCase):
         panel.connect_button.invoke()
         self.assertEqual(self.desk.tabs.select(), str(self.desk.software))
         self.assertEqual(self.desk.software.app_name.get(), "Codex")
-        self.assertEqual(self.desk.software.codex_mode.get(), "mcp")
+        self.assertEqual(self.desk.software.codex_mode.get(), "codex-native")
         panel.accounts_button.invoke()
         self.desk.show_accounts.assert_called_once_with()
 

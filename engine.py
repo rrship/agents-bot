@@ -13,6 +13,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from handoff import HANDOFF_INSTRUCTION, automatic_handoff, bounded_prompt, eligible_members, parse_handoff
+from team_modes import OPC, job_mode
 
 def call(agent, config, prompt):
     from providers import call as invoke
@@ -105,11 +106,15 @@ def exclusive(path):
 class Job:
     def __init__(self, path, state):
         self.path, self.state = Path(path), state
+        self.state["mode"] = job_mode(state)
+        if state["mode"] == OPC:
+            from opc_runtime import checked_routes
+            checked_routes(state["opc_routes"], state.get("members", ()), state.get("leader"))
         self.state.setdefault("members", list(AGENTS))
         self.state.setdefault("leader", None)
 
     @classmethod
-    def create(cls, root, goal, checks, members=None, leader=None, opc_routes=None):
+    def create(cls, root, goal, checks, members=None, leader=None, opc_routes=None, *, mode=None):
         root = Path(root).resolve(strict=True)
         if not root.is_dir() or not goal.strip():
             raise ValueError("请选择项目目录并填写任务")
@@ -133,10 +138,13 @@ class Job:
         if parent.resolve() != parent:
             raise ValueError("任务目录不能指向外部位置")
         path = parent / uuid.uuid4().hex[:12]
+        state = dict(root=str(root), goal=goal, checks=checks, status="就绪", round=0,
+                     members=list(members), leader=leader, answers={}, messages=[], feedback="", **opc)
+        if mode is not None:
+            state["mode"] = mode
+        job = cls(path, state)
         path.mkdir(parents=True)
         shutil.copytree(root, path / "baseline", ignore=ignored)
-        job = cls(path, dict(root=str(root), goal=goal, checks=checks, status="就绪", round=0,
-                             members=list(members), leader=leader, answers={}, messages=[], feedback="", **opc))
         job.save()
         return job
 
@@ -159,11 +167,11 @@ class Job:
 
     def rebind_opc(self, routes):
         """Replace transport references while preserving the job's roster, skills and answers."""
-        from opc_runtime import checked_routes
         with exclusive(self.path / "run.lock"):
             self.state = self.load(self.path).state
-            if "opc_routes" not in self.state or self.state["status"] in {"完成", "已取消", "待人工验收"}:
+            if self.state["mode"] != OPC or self.state["status"] in {"完成", "已取消", "待人工验收"}:
                 raise ValueError("请选择尚未结束的 OPC 任务来更换员工连接。")
+            from opc_runtime import checked_routes
             clean = checked_routes(routes, self.state["members"], self.state["leader"])
             self.state["opc_routes"] = clean
             self.save()
@@ -226,23 +234,26 @@ class Job:
         members = s["members"]
         leader = s["leader"]
         workers = [name for name in members if name != leader]
-        opc = s.get("opc_roles")
-        if opc is not None:
+        is_opc = s["mode"] == OPC
+        if is_opc:
             from opc_runtime import checked_routes, employee_prompt
+            opc = s["opc_roles"]
             routes = checked_routes(s.get("opc_routes"), members, leader)
             if set(opc) != set(members) or any(
                     not isinstance(configs.get(role), dict) or configs[role].get("opc_binding") != ref
                     for role, ref in routes.items()):
                 raise ValueError("OPC 员工连接已更改，请重新读取任务并确认各岗位的连接。")
+        elif any(isinstance(cfg, dict) and "opc_binding" in cfg for cfg in configs.values()):
+            raise ValueError("常规任务收到了 OPC 员工连接，请重新选择常规团队。")
 
         def make_prompt(member, header, context):
-            if opc is not None:
+            if is_opc:
                 return employee_prompt(member, opc, header, context)
             return bounded_prompt(header, context)
 
         def dispatch(pool, member, stage, prompt):
             config = configs[member]
-            runtime = config["runtime_member"] if opc is not None else member
+            runtime = config["runtime_member"] if is_opc else member
             if isinstance(config, dict) and config.get("mode") == "software":
                 config = dict(config, stop=stop)
                 if config.get("transport") in {"baton", "codex-native"}:
