@@ -18,6 +18,8 @@ from software_ui import SoftwarePanel
 from opc_ui import OPCPanel
 from opc_runtime import resolve_configs
 from opc_skills import LEAD
+from routines_ui import RoutinesPanel
+from workspace_search import Destination, WorkspaceSearch, recent_jobs, remember_job
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -96,6 +98,9 @@ class Desk:
         self.tabs.add(self.lite, text="内置 Agent 与账号")
         self.opc = OPCPanel(self.tabs, self)
         self.tabs.add(self.opc, text="OPC 一人公司")
+        self.routines = RoutinesPanel(self.tabs, self)
+        self.tabs.add(self.routines, text="例行任务")
+        self.switcher = None
         self._navigation()
         self._controls()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -150,20 +155,29 @@ class Desk:
                                  state.get("leader"), self.activity)
 
     def _navigation(self):
-        self.icons = {name: ui.icon(self.root, name, ui.RAIL_TEXT) for name in ("tasks", "team", "software", "opc", "lite", "cloud", "phone")}
+        self.icons = {name: ui.icon(self.root, name, ui.RAIL_TEXT) for name in
+                      ("tasks", "team", "software", "opc", "lite", "cloud", "phone", "search", "routines")}
         self.icons["mark"] = ui.icon(self.root, "mark", ui.SURFACE, 24)
         brand = tk.Frame(self.sidebar, bg=ui.RAIL)
-        brand.pack(fill="x", padx=15, pady=(24, 30))
+        brand.pack(fill="x", padx=15, pady=(18, 12))
         tk.Label(brand, image=self.icons["mark"], bg=ui.RAIL).pack(side="left")
         tk.Label(brand, text="Agents Bot", bg=ui.RAIL, fg=ui.SURFACE,
                  font=("Segoe UI Semibold", 15)).pack(side="left", padx=(7, 0))
         self.nav_buttons = {}
-        for page, symbol in ((self.tasks, "tasks"), (self.opc, "opc"), (self.software, "software"), (self.team, "team"),
-                             (self.lite, "lite"), (self.cloud, "cloud")):
-            label = self.tabs.tab(page, "text")
-            btn = self._rail_button(label, symbol, lambda p=page: self._open_page(p))
-            btn.pack(fill="x", padx=8, pady=2)
-            self.nav_buttons[str(page)] = btn
+        self.search_button = self._rail_button("搜索     Ctrl+K", "search", self.search_workspace)
+        self.search_button.configure(bg=ui.RAIL_ACTIVE, highlightbackground=ui.RAIL_ACTIVE)
+        self.search_button.pack(fill="x", padx=8, pady=(0, 3))
+        self.root.bind("<Control-k>", self.search_workspace)
+        for group, pages in (("工作空间", ((self.tasks, "tasks"), (self.routines, "routines"), (self.opc, "opc"))),
+                             ("连接", ((self.software, "software"), (self.team, "team"),
+                                       (self.lite, "lite"), (self.cloud, "cloud")))):
+            tk.Label(self.sidebar, text=group, bg=ui.RAIL, fg=ui.RAIL_SUB,
+                     font=(FONT, 9, "bold")).pack(anchor="w", padx=16, pady=(8, 2))
+            for page, symbol in pages:
+                label = self.tabs.tab(page, "text")
+                btn = self._rail_button(label, symbol, lambda p=page: self._open_page(p))
+                btn.pack(fill="x", padx=8, pady=1)
+                self.nav_buttons[str(page)] = btn
         self._rail_button("手机监控", "phone", self.mobile_settings).pack(side="bottom", fill="x", padx=8, pady=(4, 16))
         tk.Frame(self.sidebar, bg=ui.RAIL_ACTIVE, height=1).pack(side="bottom", fill="x", padx=15)
         self.bots = BotRail(self.sidebar, self)
@@ -175,7 +189,41 @@ class Desk:
                          font=(FONT, 10), anchor="w", bg=ui.RAIL, fg=ui.RAIL_TEXT, relief="flat",
                          activebackground=ui.RAIL_ACTIVE, activeforeground=ui.SURFACE, cursor="hand2",
                          borderwidth=0, highlightthickness=1, highlightcolor=ui.RAIL_SUB,
-                         highlightbackground=ui.RAIL, padx=8, pady=8)
+                         highlightbackground=ui.RAIL, padx=8, pady=4)
+
+    def search_workspace(self, _event=None):
+        if self.switcher is not None and self.switcher.winfo_exists():
+            self.switcher.lift()
+            self.switcher.input.focus_set()
+            return "break"
+        entries = [Destination("页面", page, self.tabs.tab(page, "text")) for page in self.nav_buttons]
+        try:
+            entries.extend(Destination("Bot", bot["id"], bot["name"], bot["provider"] + " · " + bot["model"])
+                           for bot in self.account_store.list_bots())
+            entries.extend(Destination("最近任务", job["path"], job["title"],
+                                       job["project"] + " · " + TASK_MODES[job["mode"]])
+                           for job in recent_jobs(self.account_store) if job["mode"] in TASK_MODES)
+        except (OSError, sqlite3.Error, ValueError) as error:
+            self.status.set("读取工作区索引失败 · " + str(error))
+        self.switcher = WorkspaceSearch(self, entries, self._open_destination)
+        return "break"
+
+    def _open_destination(self, item):
+        if item.kind == "页面":
+            self._open_page(self.root.nametowidget(item.key))
+        elif item.kind == "Bot":
+            try:
+                self.show_bot(self.find_bot(item.key))
+            except (ValueError, OSError, sqlite3.Error) as error:
+                messagebox.showerror("打开 Bot", str(error), parent=self.root)
+        else:
+            self.open_job(item.key)
+
+    def _remember_job(self, job):
+        try:
+            remember_job(self.account_store, job)
+        except (OSError, sqlite3.Error) as error:
+            self._append("无法保存最近任务索引 · " + str(error))
 
     def _open_page(self, page):
         if page is self.lite:
@@ -188,6 +236,8 @@ class Desk:
 
     def _nav_state(self, _event=None):
         current = self.tabs.select()
+        if current == str(self.routines):
+            self.routines.refresh()
         if current == str(self.opc):
             self.opc.refresh()
             if not self._opc_initialized:
@@ -250,12 +300,16 @@ class Desk:
             self.builtin_binding.set("先选择一个 Bot 或账号，再绑定到团队。")
         self._nav_state()
 
+    def refresh_bot_previews(self):
+        self.bots.refresh()
+        self._nav_state()
+
     def _task_view(self):
         page = self.tasks
         page.columnconfigure(0, weight=1)
         page.rowconfigure(2, weight=1)
         head = tk.Frame(page, bg=ui.BG)
-        head.grid(row=0, column=0, sticky="ew", padx=18, pady=(17, 13))
+        head.grid(row=0, column=0, sticky="ew", padx=18, pady=(14, 8))
         tk.Label(head, text="任务工作台", bg=ui.BG, fg=ui.INK, font=(FONT, 21, "bold")).pack(side="left")
         tk.Label(head, textvariable=self.status, bg=ui.SUBTLE, fg=ui.INK, padx=10, pady=4,
                  font=(FONT, 9)).pack(side="right")
@@ -265,8 +319,8 @@ class Desk:
         self.mode_buttons = {}
         for mode, label in TASK_MODES.items():
             button = ttk.Radiobutton(selector, text=label, variable=self.task_mode,
-                                     value=mode, command=self._pick_task_mode)
-            button.pack(side="left", padx=(0, 16))
+                                     value=mode, style="Mode.Toolbutton", command=self._pick_task_mode)
+            button.pack(side="left", padx=(0, 2))
             self.mode_buttons[mode] = button
         cards = self.task_cards = tk.Frame(page, bg=ui.BG)
         cards.grid(row=2, column=0, sticky="nsew", padx=16, pady=(0, 16))
@@ -817,8 +871,12 @@ class Desk:
             field.delete("1.0", "end")
             field.insert("1.0", value)
 
-    def open_job(self):
-        path = filedialog.askdirectory(title="选择已保存的任务目录", parent=self.root, mustexist=True)
+    def open_job(self, path=None):
+        if self.running:
+            messagebox.showinfo("载入任务", "请先暂停当前任务，等待保存后再载入。", parent=self.root)
+            return
+        if path is None:
+            path = filedialog.askdirectory(title="选择已保存的任务目录", parent=self.root, mustexist=True)
         if not path:
             return
         try:
@@ -836,8 +894,10 @@ class Desk:
                 stream.seek(max(0, log_path.stat().st_size - 128000))
                 self._append(stream.read().decode("utf-8", errors="replace"))
         self._append(f"已载入任务 {job.path}")
+        self._remember_job(job)
         self.status.set(job.state["status"])
         self._controls()
+        self.tabs.select(self.tasks)
 
     def open_folder(self):
         if self.job:
@@ -857,6 +917,7 @@ class Desk:
         self.cloud.poll()
         self.lite.poll()
         self.software.poll()
+        self.routines.poll()
         while True:
             try:
                 kind, value = self.queue.get_nowait()
@@ -864,6 +925,7 @@ class Desk:
                 break
             if kind == "job":
                 self.job = value
+                self._remember_job(value)
                 self._append(f"任务目录  {value.path}")
                 self._controls()
             elif kind == "log":
@@ -897,6 +959,7 @@ class Desk:
         if self.monitor:
             self.monitor.close()
         self.lite.close()
+        self.routines.close()
         self.cloud.disconnect()
         if self._bridge is not None:
             self._bridge.close()

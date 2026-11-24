@@ -2,16 +2,22 @@
 
 Agents Bot 是一个 Windows 多智能体开发工作台。新建任务时选择 **常规多智能体协作** 或 **OPC 一人公司**。两种模式都能使用 API 账号和本地 MCP 软件，在团队对话中查看分工、草稿、交接和验收结果。
 
-[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.6.1/AgentsBot-v1.6.1-Windows-x64.zip) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.6.1/AgentsBot-v1.6.1-source.zip) · [下载安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.6.1/AgentsBot-Android.apk) · [v1.6.1 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.6.1)
+[下载 Windows x64 便携包](https://github.com/rrship/agents-bot/releases/download/v1.7.0/AgentsBot-v1.7.0-Windows-x64.zip) · [下载源码 ZIP](https://github.com/rrship/agents-bot/releases/download/v1.7.0/AgentsBot-v1.7.0-source.zip) · [下载安卓监控端 1.1（Android 8.0+）](https://github.com/rrship/agents-bot/releases/download/v1.7.0/AgentsBot-Android.apk) · [v1.7.0 发布说明](https://github.com/rrship/agents-bot/releases/tag/v1.7.0)
 
 | 工作模式 | 你决定什么 | 团队如何工作 |
 | --- | --- | --- |
 | 常规多智能体协作 | 自选模型、桌面软件或内置 Agent 组队，可指定任意一位成员当组长 | 选「平等协作」让成员分工互审，或选「组长统筹」由组长派单和复核。支持本地项目及 SSH 云房间。[常规团队入门](#完成第一个本地任务) |
 | OPC 一人公司 | 以老板身份定目标和验收条件，选择出勤岗位，为每个岗位指定连接 | 项目经理固定负责派单和验收，前端、后端、测试员工按各自的内置技能手册，在本机工作台交付。各岗位可以共用一个账号或一款软件。[OPC 入门](#用一个账号开一人公司) |
 
-![工作台顶部的任务模式选择与下方的任务设置](docs/images/work-modes.png)
-
 在工作台顶部的「任务模式」选择团队。每个任务保留创建时的模式。用「载入任务…」打开旧项目，会回到原有的协作方式。要尝试另一种方式，可以在新任务中重新选择。[选择模式与恢复任务](使用说明.md#选择工作模式)
+
+## 让 Bot 记住约定并定时工作
+
+![例行任务的计划、运行记录与答复，左侧是各 Bot 的最近回复](docs/images/bot-workspace.png)
+
+1. 从侧栏「我的 Bot」新建一个测试助手，选择它的 API 账号。打开「长期记忆…」，保存「本项目的验收清单必须覆盖中文输入、空数据和断网」。此后与它私聊时，助手会收到这项约定。重新打开工作台还能接着最近 50 轮完整私聊继续工作。[Bot 对话与长期记忆](使用说明.md#我的-bot)
+2. 打开「例行任务」→「新建任务」，选测试助手，把周期设为「周一至周五」、本机时间设为 `09:00`，填写「列出今天做桌面回归测试前要准备的五项检查」。保存后可点「立即运行」，在「运行记录」里打开这次答复。每次执行使用 Bot 的 API 额度，定时执行期间需要电脑联网、工作台保持打开。[例行任务设置](使用说明.md#例行任务)
+3. 在主窗口按 **Ctrl+K** 或点侧栏「搜索」。输入 Bot 名可进入私聊，输入项目名或任务标题可回到最近的常规或 OPC 任务。首次找回旧版任务时，先用「载入任务…」选择任务目录。[搜索工作区](使用说明.md#搜索工作区)
 
 ## 用一个账号开一人公司
 
@@ -41,7 +47,7 @@ Agents Bot 是一个 Windows 多智能体开发工作台。新建任务时选择
 
 1. 在「我的 Bot」点「＋ 新建」。首次使用时也可直接点「代码审查」「研究助手」或「测试助手」作为起点。
 2. 给它起名，选择模型账号，写下它的职责。例如给代码审查 Bot 填入「逐条列出文件名、风险和修改建议」。首次使用可在此处点「新建账号…」配置服务商、模型 ID 和 API 密钥。
-3. 保存后点侧栏的 Bot 名称即可对话。点名字旁的「⋯」或对话页的「Bot 设置…」可编辑名称、职责和账号。设置会在重启后保留，各 Bot 的对话、附件和草稿保留在本次窗口内。关闭前点「导出草稿…」可保存生成的文件。
+3. 保存后点侧栏的 Bot 名称即可对话。点名字旁的「⋯」或「Bot 设置…」可编辑名称、职责和账号。已保存 Bot 的文字私聊及长期记忆可以跨次使用。附件与生成的文件草稿保留在当前窗口，需要留存时点「导出草稿…」。
 4. 想让它参与团队，打开这个 Bot，点「用于团队内置 Agent」，再到「成员与连接」勾选队友。要让它领队，选「组长统筹」，将「内置 Agent」设为组长。团队有一个内置 Agent 席位，你可以从侧栏选择另一位 Bot 并重新绑定。[Bot 设置与团队绑定指南](使用说明.md#我的-bot)
 
 | 你想做什么 | 从哪里开始 |
@@ -113,6 +119,8 @@ Agents Bot 是一个 Windows 多智能体开发工作台。新建任务时选择
 常规协作侧重模型和软件接入、自由组队、组长调度与 SSH 云房间。OPC 侧重员工岗位、技能手册、岗位分工与项目经理验收。提交需求或问题时可注明所属模式。账号管理、MCP 任务收发、任务保存与交付检查属于共用能力，改动时应分别用一个常规任务和一个 OPC 任务验证。
 
 ## 项目参考
+
+本版参考 Rakazo 把持久 Bot 和例行任务集中在同一个工作区的交互。Agents Bot 的工作区搜索、私聊记忆和本机调度均用 Python 与 Tk 独立实现。[参考版本与界面示例](https://github.com/elie222/rakazo/tree/07fb32de7ab9f35bd8c57479e702349a0846457f#features)
 
 「团队对话」参考了 ClawChat 将多个 AI 放进同一个项目群聊的交互。工作台用发件人、接收人和任务阶段串起派单、接手、交付和验收。[ClawChat](https://github.com/Lenka0605/ClawChat)
 

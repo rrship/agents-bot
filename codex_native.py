@@ -99,7 +99,7 @@ class _Connection:
 
 
 def _one_turn(connection, cwd, prompt):
-    connection.request("initialize", {"clientInfo": {"name": "agents_bot", "title": "Agents Bot", "version": "1.6.1"}})
+    connection.request("initialize", {"clientInfo": {"name": "agents_bot", "title": "Agents Bot", "version": "1.7.0"}})
     connection.send({"method": "initialized"})
     thread = connection.request("thread/start", {
         "cwd": cwd, "ephemeral": True, "approvalPolicy": "never", "sandbox": "read-only",

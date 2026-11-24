@@ -4,6 +4,7 @@ import sqlite3
 from tkinter import messagebox, ttk
 
 import desktop_style as ui
+import bot_memory
 from lite_ui import ProfileEditor
 
 
@@ -21,7 +22,7 @@ class BotRail:
         self.rows = []
         self.editor = None
         self._avatars = []  # keep PhotoImage refs alive
-        tk.Frame(parent, bg=ui.RAIL_ACTIVE, height=1).pack(fill="x", padx=15, pady=(18, 9))
+        tk.Frame(parent, bg=ui.RAIL_ACTIVE, height=1).pack(fill="x", padx=15, pady=(10, 7))
         bar = tk.Frame(parent, bg=ui.RAIL)
         bar.pack(fill="x", padx=13)
         tk.Label(bar, text="我的 Bot", bg=ui.RAIL, fg=ui.RAIL_SUB, font=(ui.FONT, 9, "bold")).pack(side="left")
@@ -47,6 +48,7 @@ class BotRail:
     def refresh(self, selected=None):
         try:
             self.records = self.desk.account_store.list_bots()
+            previews = bot_memory.previews(self.desk.account_store) if self.records else {}
         except (ValueError, OSError, RuntimeError, sqlite3.Error) as exc:
             self.desk.status.set("无法读取 Bot：" + str(exc))
             return
@@ -57,24 +59,31 @@ class BotRail:
             row.destroy()
         self._avatars.clear()
         self.entry_widgets.clear()
-        for index, row in enumerate(self.rows):
+        for row in self.rows:
             saved = bool(row.get("id"))
             tile = tk.Frame(self.items, bg=ui.RAIL)
             tile.pack(fill="x", pady=1)
             if saved:
-                img = ui.bot_avatar(self.viewport, index, size=16)
+                tile.columnconfigure(0, weight=1)
+                img = ui.bot_avatar(self.viewport, int(row["id"][:4], 16), size=18)
                 self._avatars.append(img)
                 label = self._button(tile, row["name"], (lambda b=row: self.desk.show_bot(b)))
                 label.configure(image=img, compound="left", padx=8, font=(ui.FONT, 10), pady=5, width=1)
                 settings = self._button(tile, "⋯", lambda b=row: self.edit(b))
                 settings.configure(font=("Segoe UI", 12), padx=4)
-                settings.pack(side="right", fill="y")
+                label.grid(row=0, column=0, sticky="ew")
+                settings.grid(row=0, column=1, rowspan=2, sticky="ns")
+                detail = previews.get(row["id"]) or row["provider"]
+                snippet = tk.Label(tile, text=detail, font=(ui.FONT, 8), width=1, anchor="w",
+                                   padx=2, fg=ui.RAIL_SUB, bg=ui.RAIL, cursor="hand2")
+                snippet.grid(row=1, column=0, sticky="ew", padx=(12, 0), pady=(0, 4))
+                snippet.bind("<Button-1>", lambda _, b=row: self.desk.show_bot(b))
                 self.entry_widgets[row["id"]] = (tile, label, settings)
             else:
                 label = self._button(tile, "＋ " + row["name"],
                                      lambda b=row: self.edit(template=b["name"]))
                 label.configure(font=(ui.FONT, 10), pady=5, width=1)
-            label.pack(side="left", fill="both", expand=True)
+                label.pack(side="left", fill="both", expand=True)
             for control in tile.winfo_children():
                 control.bind("<MouseWheel>", self._scroll)
                 control.bind("<FocusIn>", self._reveal)
@@ -103,7 +112,7 @@ class BotRail:
         for uid, (tile, label, settings) in self.entry_widgets.items():
             bg = ui.RAIL_ACTIVE if uid == bot_id else ui.RAIL
             tile.configure(bg=bg)
-            for control in (label, settings):
+            for control in tile.winfo_children():
                 control.configure(bg=bg, highlightbackground=bg)
 
     def edit(self, bot=None, template=None):
@@ -190,6 +199,10 @@ class BotEditor(tk.Toplevel):
             index = self.accounts.current()
             if index < 0:
                 raise ValueError("请新建或选择一个模型账号。")
+            if self.bot and self.profiles[index]["id"] != self.bot["profile_id"]:
+                if not messagebox.askyesno("更换 Bot 账号",
+                        "更换账号将清除这个 Bot 的私聊历史和长期记忆。确定更换？", parent=self):
+                    return
             uid = self.desk.account_store.save_bot(self.name.get(), self.instructions.get("1.0", "end-1c"),
                                                    self.profiles[index]["id"], bot_id=self.bot.get("id"))
         except Exception as exc:
@@ -201,7 +214,7 @@ class BotEditor(tk.Toplevel):
         self.desk.show_bot(next(row for row in self.rail.records if row["id"] == uid))
 
     def _delete(self):
-        if not messagebox.askyesno("删除 Bot", f"删除「{self.bot['name']}」和它在本窗口的对话？", parent=self):
+        if not messagebox.askyesno("删除 Bot", f"删除「{self.bot['name']}」及它保存的对话、记忆和例行任务？", parent=self):
             return
         try:
             self.desk.account_store.delete_bot(self.bot["id"])

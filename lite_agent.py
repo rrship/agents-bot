@@ -172,6 +172,11 @@ def run_task(provider, config, request, files=None, history=(), stop=None, repor
         raise ValueError("请输入 1 至 12,000 个字符的任务。")
     snapshot = validated_files({} if files is None else files).copy()
     base = dict(task=request, history=_history(history), file_count=len(snapshot))
+    if config.get("bot_memory"):
+        memory = config["bot_memory"]
+        if not isinstance(memory, str) or len(memory) > 4000:
+            raise ValueError("Bot 记忆需要使用 4,000 字以内的文本。")
+        base["user_saved_memory"] = memory
     return _run(provider, config, base, snapshot, stop, report, team=False)
 
 

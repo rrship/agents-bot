@@ -6,6 +6,7 @@ on:
       - "test_cloud_*.py"
       - "team_modes.py"
       - "engine.py"
+      - "lite_agent.py"
       - "handoff.py"
       - "providers.py"
       - ".github/workflows/cloud.yml"

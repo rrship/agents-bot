@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import queue
+import sqlite3
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -12,6 +13,7 @@ from cloud_ui import export_project
 from desktop_style import FONT, INK, MUTED, SUBTLE, style_text
 from providers import ENV_KEYS
 from lite_agent import run_task
+import bot_memory
 
 
 def read_attachments(paths, existing):
@@ -87,13 +89,21 @@ class ProfileEditor(tk.Toplevel):
 
     def save(self):
         fields = {key: var.get().strip() for key, var in self.fields.items()}
+        changed_provider = bool(self.profile and self.profile["provider"] != fields["provider"])
         try:
+            if changed_provider and any(bot["profile_id"] == self.profile["id"]
+                                        for bot in self.panel.desk.account_store.list_bots()):
+                if not messagebox.askyesno("更换模型服务", "更换服务商将清除使用此账号的 Bot 已保存的私聊和长期记忆。继续更换？",
+                                          parent=self):
+                    return
             profile_id = self.panel.desk.account_store.save_profile(**fields, profile_id=self.profile.get("id"))
         except Exception as exc:
             messagebox.showerror("保存账号", str(exc), parent=self)
             return
         self.fields["api_key"].set("")
         self.panel.refresh_profiles(profile_id)
+        if changed_provider:
+            self.panel.desk.refresh_bot_previews()
         self.destroy()
 
 
@@ -145,6 +155,7 @@ class LitePanel(ttk.Frame):
         conversation.grid(row=3, sticky="ew", pady=(12, 5))
         ttk.Label(conversation, text="对话", style="Section.TLabel").pack(side="left")
         self._button(conversation, "new", "清空对话", self.clear, side="right")
+        self.memory_button = ttk.Button(conversation, text="长期记忆…", command=self.edit_memory)
         chat = ttk.Frame(self)
         chat.grid(row=4, sticky="nsew")
         self.transcript = ScrolledText(chat, height=3, width=20, wrap="word", state="disabled")
@@ -200,6 +211,7 @@ class LitePanel(ttk.Frame):
         self.settings.grid_remove()
         self.settings_toggle.configure(text="账号管理 ▾")
         self.bot_row.grid(row=1, sticky="ew")
+        self.memory_button.pack(side="right", padx=(0, 6))
         if not self.refresh_profiles():
             self.prompt.delete("1.0", "end")
             return True
@@ -216,6 +228,7 @@ class LitePanel(ttk.Frame):
         self.active_bot = None
         self.title_text.set("内置 Agent")
         self.bot_row.grid_remove()
+        self.memory_button.pack_forget()
         self.profile_row.grid()
         self.refresh_profiles(self.account_id)
         self._restore_input()
@@ -259,6 +272,7 @@ class LitePanel(ttk.Frame):
             self.hint.set("读取账号失败：" + str(exc))
             if self.active_bot:
                 self.selected_id = None
+                self.sessions.pop(self._session_key(), None)
                 self.bot_info.set("绑定的 API 账号暂时无法读取。")
                 self._render()
             return False
@@ -276,13 +290,18 @@ class LitePanel(ttk.Frame):
             record = next((p for p in profiles if p["id"] == wanted), None)
             self.selected_id = wanted if record else None
             if record:
-                session = self._session()
-                binding = (wanted, record["provider"])
-                if session.get("binding", binding) != binding:
-                    self.sessions.pop(self._session_key())
-                    session = self._session()
-                    self.prompt.delete("1.0", "end")
-                session["binding"] = binding
+                try:
+                    self._load_chat(record["provider"])
+                except (OSError, ValueError, sqlite3.Error) as exc:
+                    self.sessions.pop(self._session_key(), None)
+                    self.selected_id = None
+                    self.hint.set("读取 Bot 对话失败：" + str(exc))
+                    self.bot_info.set("请重新打开 Bot。")
+                    self._render()
+                    return False
+            else:
+                self.sessions.pop(self._session_key(), None)
+                self.prompt.delete("1.0", "end")
             self.bot_info.set(f"{record['provider']} / {record['model']}   ·   {record['name']}" if record
                               else "绑定的 API 账号已不存在，请编辑 Bot 选择账号。")
             self._render()
@@ -311,6 +330,57 @@ class LitePanel(ttk.Frame):
 
     def _session_key(self):
         return ("bot", self.active_bot["id"]) if self.active_bot else self.selected_id
+
+    def _load_chat(self, provider):
+        binding = (self.selected_id, provider)
+        chat_id, memory, history = bot_memory.load(self.desk.account_store, self.active_bot["id"], *binding)
+        session = self._session()
+        changed = session.get("chat_id", chat_id) != chat_id or session.get("binding", binding) != binding
+        if changed:
+            self.sessions.pop(self._session_key())
+            session = self._session()
+            self.prompt.delete("1.0", "end")
+        session.update(binding=binding, chat_id=chat_id, memory=memory, history=history)
+        return changed
+
+    def _chat_args(self):
+        session = self._session()
+        return self.desk.account_store, self.active_bot["id"], *session["binding"], session["chat_id"]
+
+    def edit_memory(self):
+        if not self.active_bot or self.stop is not None or not self.refresh_profiles() or not self.selected_id:
+            return
+        editor = tk.Toplevel(self)
+        editor.title(self.active_bot["name"] + " · 长期记忆")
+        editor.transient(self.winfo_toplevel())
+        body = ttk.Frame(editor, padding=16)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="长期记忆", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(body, text="写下希望这个 Bot 在私聊时记住的偏好或项目约定。保存空白即可删除。",
+                  style="Hint.TLabel", wraplength=390).pack(anchor="w", pady=(4, 10))
+        note = ScrolledText(body, width=42, height=8, wrap="word")
+        style_text(note, editor=True)
+        note.pack(fill="both", expand=True)
+        previous = self._session()["memory"]
+        args = self._chat_args()
+        note.insert("1.0", previous)
+        actions = ttk.Frame(body)
+        actions.pack(fill="x", pady=(10, 0))
+        def save():
+            try:
+                value = bot_memory.set_memory(*args, previous, note.get("1.0", "end-1c"))
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                messagebox.showerror("保存记忆", str(exc), parent=editor)
+                return
+            if self.active_bot and self.active_bot["id"] == args[1]:
+                self._session()["memory"] = value
+            self.hint.set("已保存长期记忆。" if value else "已删除长期记忆。")
+            editor.destroy()
+        ttk.Button(actions, text="保存", command=save, style="Accent.TButton").pack(side="right")
+        ttk.Button(actions, text="取消", command=editor.destroy).pack(side="right", padx=6)
+        editor.bind("<Escape>", lambda _event: editor.destroy())
+        editor.grab_set()
+        note.focus_set()
 
     def current_config(self):
         if not self.selected_id:
@@ -346,13 +416,19 @@ class LitePanel(ttk.Frame):
         if history or session.get("pending"):
             self.empty.place_forget()
         else:
-            self.empty.configure(text="输入任务，或添加一份参考文件开始对话。" if has
-                                 else "点「新建」或「导入账号 JSON」连接第一个账号。")
+            if has:
+                text = "输入任务，或添加一份参考文件开始对话。"
+            elif self.active_bot:
+                text = "请在 Bot 设置中检查绑定的 API 账号。"
+            else:
+                text = "点「新建」或「导入账号 JSON」连接第一个账号。"
+            self.empty.configure(text=text)
             self.empty.place(relx=.5, rely=.5, anchor="center")
         self.summary.set(f"参考文件 {len(files)} 个　草稿 {len(drafts)} 个")
         self.choices.configure(state="disabled" if active or self.active_bot else "readonly")
         self.bind_bot.configure(state="normal" if has and not active else "disabled")
         self.edit_bot.configure(state="disabled" if active else "normal")
+        self.memory_button.configure(state="normal" if has and not active else "disabled")
         self.prompt.configure(state="disabled" if active else "normal")
         for name, btn in self.actions.items():
             available = (active if name == "stop" else not active and
@@ -415,7 +491,17 @@ class LitePanel(ttk.Frame):
     def clear(self):
         if not messagebox.askyesno("清空对话", "清空当前对话、参考文件和未导出的草稿？", parent=self):
             return
-        self.sessions.pop(self._session_key(), None)
+        if self.active_bot:
+            try:
+                session = self._session()
+                chat_id = bot_memory.clear_history(*self._chat_args())
+                session.update(history=[], files={}, drafts={}, input="", chat_id=chat_id)
+                self.desk.refresh_bot_previews()
+            except (OSError, sqlite3.Error, ValueError) as exc:
+                messagebox.showerror("清空对话", str(exc), parent=self)
+                return
+        else:
+            self.sessions.pop(self._session_key(), None)
         self.prompt.delete("1.0", "end")
         self._render()
 
@@ -434,6 +520,11 @@ class LitePanel(ttk.Frame):
             return
         try:
             config = self.current_config()
+            if self.active_bot:
+                if self._load_chat(config["provider"]):
+                    self._render()
+                    raise ValueError("Bot 的对话已在别处清空或重新绑定。请在当前对话重新填写任务。")
+                config["bot_memory"] = self._session()["memory"]
             session = self._session()
             files = validated_files({**session["files"], **session["drafts"]})
         except Exception as exc:
@@ -488,13 +579,33 @@ class LitePanel(ttk.Frame):
                     drafts = validated_files({**session["drafts"], **value["files"]})
                 except ValueError as exc:
                     self.hint.set("保存草稿失败：" + str(exc))
-                else:
-                    session["history"].extend([{"role": "user", "content": request},
-                                               {"role": "assistant", "content": value["message"]}])
-                    session["drafts"] = drafts
-                    self.prompt.configure(state="normal")
-                    self.prompt.delete("1.0", "end")
-                    self.hint.set("已完成。" + (" 可导出：" + "、".join(drafts)[:100] if drafts else ""))
+                    self._render()
+                    continue
+                if self.active_bot:
+                    try:
+                        bot_memory.append_turn(*self._chat_args(), request, value["message"])
+                    except ValueError as exc:
+                        # Another window cleared this private chat or changed its account.
+                        self.sessions.pop(self._session_key(), None)
+                        self.prompt.configure(state="normal")
+                        self.prompt.delete("1.0", "end")
+                        self.refresh_profiles()
+                        self.desk.refresh_bot_previews()
+                        self.hint.set(str(exc))
+                        continue
+                    except (OSError, sqlite3.Error) as exc:
+                        self.hint.set("本次回复未保存到历史记录：" + str(exc))
+                        self._render()
+                        continue
+                session["history"].extend([{"role": "user", "content": request},
+                                           {"role": "assistant", "content": value["message"]}])
+                session["drafts"] = drafts
+                self.prompt.configure(state="normal")
+                self.prompt.delete("1.0", "end")
+                self.hint.set("已完成。" + (" 可导出：" + "、".join(drafts)[:100] if drafts else ""))
+                if self.active_bot:
+                    session["history"] = session["history"][-bot_memory.RECENT_TURNS * 2:]
+                    self.desk.refresh_bot_previews()
             else:
                 self.hint.set("请求失败：" + value)
             self._render()

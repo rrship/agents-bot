@@ -5,18 +5,18 @@ from math import sqrt
 
 
 FONT = "Microsoft YaHei UI"
-BG = "#f0f4f8"
+BG = "#f5f5f3"
 SURFACE = "#ffffff"
-FIELD = "#f8fafc"
-INK = "#0f172a"
-MUTED = "#64748b"
-BORDER = "#cbd5e1"
-SUBTLE = "#e2e8f0"
-ACCENT = "#2563eb"
-RAIL = "#0f172a"
-RAIL_TEXT = "#94a3b8"
-RAIL_SUB = "#64748b"
-RAIL_ACTIVE = "#1e293b"
+FIELD = "#fafaf9"
+INK = "#262624"
+MUTED = "#656562"
+BORDER = "#d6d6d1"
+SUBTLE = "#ebebe7"
+ACCENT = "#373735"
+RAIL = "#242422"
+RAIL_TEXT = "#e4e3de"
+RAIL_SUB = "#b1b1aa"
+RAIL_ACTIVE = "#40403d"
 
 # Cycling palette for bot avatars
 AVATAR_COLORS = [
@@ -58,7 +58,7 @@ def configure(root):
                     lightcolor=ACCENT, darkcolor=ACCENT, focuscolor=SURFACE, padding=(13, 7),
                     font=(FONT, 10, "bold"))
     style.map("Accent.TButton",
-              background=[("disabled", "#e2e8f0"), ("pressed", "#1e40af"), ("active", "#1d4ed8")],
+              background=[("disabled", SUBTLE), ("pressed", "#171715"), ("active", "#494943")],
               foreground=[("disabled", "#94a3b8")],
               bordercolor=[("disabled", BORDER), ("!disabled", ACCENT)])
     style.configure("Danger.TButton", background=SURFACE, foreground="#b91c1c", bordercolor="#fca5a5",
@@ -84,6 +84,12 @@ def configure(root):
     style.layout("Pages.TNotebook.Tab", [])
     style.configure("Pages.TNotebook", borderwidth=0, background=BG, tabmargins=0, tabposition="n")
     style.configure("TSeparator", background=BORDER)
+    style.configure("Mode.Toolbutton", padding=(10, 4), background=FIELD, foreground=MUTED,
+                    borderwidth=1, relief="flat")
+    style.map("Mode.Toolbutton", background=[("selected", INK), ("active", SUBTLE)],
+              foreground=[("selected", SURFACE), ("disabled", MUTED)], relief=[("selected", "flat")])
+    style.configure("Switch.Treeview", rowheight=28, fieldbackground=SURFACE, background=SURFACE)
+    style.map("Switch.Treeview", background=[("selected", SUBTLE)], foreground=[("selected", INK)])
 
 
 def style_text(widget, *, editor=False):
@@ -126,6 +132,8 @@ def icon(master, name, color, size=20):
     from math import hypot
     segments = {
         "tasks": [(4,5,16,5), (4,10,13,10), (4,15,10,15)],
+        "search": [(12,12,17,17)],
+        "routines": [(10,5,10,10), (10,10,14,12)],
         "opc": [(2,7,18,7), (18,7,18,16), (18,16,2,16), (2,16,2,7), (6,7,6,4),
                 (6,4,14,4), (14,4,14,7), (2,10,9,12), (9,12,11,12), (11,12,18,10)],
         "software": [(2,3,13,3), (13,3,13,10), (13,10,8,10), (8,10,5,13), (5,13,5,10),
@@ -144,7 +152,8 @@ def icon(master, name, color, size=20):
         "mark": [(2,15.5,9,3.5), (9,3.5,11,3.5), (11,3.5,18,15.5), (7.8,12.5,13.5,12.5)],
         "activity": [(1,11,5,11), (5,11,8,4), (8,4,12,16), (12,16,15,9), (15,9,19,9)],
     }[name]
-    circles = [(8.5,6,2.6),(15,7.3,1.9)] if name == "team" else []
+    circles = {"team": [(8.5,6,2.6),(15,7.3,1.9)], "search": [(8,8,5.5)],
+               "routines": [(10,10,7.4)]}.get(name, ())
     width = round(size * tkfont.nametofont("TkDefaultFont", root=master).metrics("linespace") / 17)
     width = max(size, min(width, size * 2))
     photo = tk.PhotoImage(master=master, width=width, height=width)

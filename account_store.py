@@ -91,9 +91,9 @@ class AccountStore:
         self.path = Path(path)
 
     @contextmanager
-    def _database(self, write=False):
+    def _database(self, write=False, *, timeout=10):
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        db = sqlite3.connect(self.path, timeout=10)
+        db = sqlite3.connect(self.path, timeout=timeout)
         db.row_factory = sqlite3.Row
         try:
             db.execute("PRAGMA foreign_keys = ON")
