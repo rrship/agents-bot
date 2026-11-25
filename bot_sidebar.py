@@ -27,6 +27,7 @@ class BotRail:
         bar.pack(fill="x", padx=13)
         tk.Label(bar, text="我的 Bot", bg=ui.RAIL, fg=ui.RAIL_SUB, font=(ui.FONT, 9, "bold")).pack(side="left")
         self.new = self._button(bar, "＋ 新建", lambda: self.edit())
+        self.new.configure(fg=ui.ACCENT, activeforeground=ui.INK)
         self.new.pack(side="right")
         self.viewport = tk.Canvas(parent, bg=ui.RAIL, highlightthickness=0, borderwidth=0, width=1, height=1)
         self.viewport.pack(fill="both", expand=True, padx=8, pady=(5, 4))
@@ -40,9 +41,9 @@ class BotRail:
     @staticmethod
     def _button(parent, label, callback):
         return tk.Button(parent, text=label, command=callback, fg=ui.RAIL_TEXT, bg=ui.RAIL,
-                         activeforeground=ui.SURFACE, activebackground=ui.RAIL_ACTIVE,
+                         activeforeground=ui.INK, activebackground=ui.RAIL_ACTIVE,
                          font=(ui.FONT, 9), padx=5, pady=3, relief="flat", borderwidth=0,
-                         highlightthickness=1, highlightbackground=ui.RAIL, highlightcolor=ui.RAIL_SUB,
+                         highlightthickness=1, highlightbackground=ui.RAIL, highlightcolor=ui.MINT,
                          anchor="w", cursor="hand2", disabledforeground=ui.RAIL_SUB)
 
     def refresh(self, selected=None):
@@ -59,14 +60,14 @@ class BotRail:
             row.destroy()
         self._avatars.clear()
         self.entry_widgets.clear()
-        for row in self.rows:
+        for index, row in enumerate(self.rows):
             saved = bool(row.get("id"))
             tile = tk.Frame(self.items, bg=ui.RAIL)
             tile.pack(fill="x", pady=1)
+            img = ui.bot_avatar(self.viewport, int(row["id"][:4], 16) if saved else index)
+            self._avatars.append(img)
             if saved:
                 tile.columnconfigure(0, weight=1)
-                img = ui.bot_avatar(self.viewport, int(row["id"][:4], 16), size=18)
-                self._avatars.append(img)
                 label = self._button(tile, row["name"], (lambda b=row: self.desk.show_bot(b)))
                 label.configure(image=img, compound="left", padx=8, font=(ui.FONT, 10), pady=5, width=1)
                 settings = self._button(tile, "⋯", lambda b=row: self.edit(b))
@@ -76,13 +77,13 @@ class BotRail:
                 detail = previews.get(row["id"]) or row["provider"]
                 snippet = tk.Label(tile, text=detail, font=(ui.FONT, 8), width=1, anchor="w",
                                    padx=2, fg=ui.RAIL_SUB, bg=ui.RAIL, cursor="hand2")
-                snippet.grid(row=1, column=0, sticky="ew", padx=(12, 0), pady=(0, 4))
+                snippet.grid(row=1, column=0, sticky="ew", padx=(29, 0), pady=(0, 4))
                 snippet.bind("<Button-1>", lambda _, b=row: self.desk.show_bot(b))
                 self.entry_widgets[row["id"]] = (tile, label, settings)
             else:
                 label = self._button(tile, "＋ " + row["name"],
                                      lambda b=row: self.edit(template=b["name"]))
-                label.configure(font=(ui.FONT, 10), pady=5, width=1)
+                label.configure(image=img, compound="left", font=(ui.FONT, 10), padx=8, pady=5, width=1)
                 label.pack(side="left", fill="both", expand=True)
             for control in tile.winfo_children():
                 control.bind("<MouseWheel>", self._scroll)
@@ -110,10 +111,13 @@ class BotRail:
 
     def set_active(self, bot_id):
         for uid, (tile, label, settings) in self.entry_widgets.items():
-            bg = ui.RAIL_ACTIVE if uid == bot_id else ui.RAIL
+            selected = uid == bot_id
+            bg = ui.RAIL_ACTIVE if selected else ui.RAIL
             tile.configure(bg=bg)
             for control in tile.winfo_children():
                 control.configure(bg=bg, highlightbackground=bg)
+            label.configure(fg=ui.ACCENT if selected else ui.RAIL_TEXT)
+            settings.configure(fg=ui.ACCENT if selected else ui.RAIL_SUB)
 
     def edit(self, bot=None, template=None):
         if self.editor is not None and self.editor.winfo_exists():
@@ -161,7 +165,7 @@ class BotEditor(tk.Toplevel):
         footer = ttk.Frame(body)
         footer.grid(row=7, columnspan=2, sticky="ew")
         if bot:
-            ttk.Button(footer, text="删除 Bot", command=self._delete).pack(side="left")
+            ttk.Button(footer, text="删除 Bot", style="Danger.TButton", command=self._delete).pack(side="left")
         ttk.Button(footer, text="保存", style="Accent.TButton", command=self._save).pack(side="right")
         ttk.Button(footer, text="取消", command=self.destroy).pack(side="right", padx=6)
         self._profiles(self.bot.get("profile_id"))

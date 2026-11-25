@@ -8,9 +8,10 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
+from action_menu import ActionMenu
 from cloud_room import validated_files
 from cloud_ui import export_project
-from desktop_style import FONT, INK, MUTED, SUBTLE, style_text
+from desktop_style import ACCENT, FONT, INK, MUTED, SUBTLE, icon, style_text
 from providers import ENV_KEYS
 from lite_agent import run_task
 import bot_memory
@@ -122,71 +123,77 @@ class LitePanel(ttk.Frame):
         self.closed = False
         self.actions = {}
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(4, weight=1)
+        self.rowconfigure(2, weight=1)
         self.title_text = tk.StringVar(self, "内置 Agent")
-        title = ttk.Label(self, textvariable=self.title_text, style="Title.TLabel")
-        title.grid(row=0, sticky="ew", pady=(0, 8))
+        head = ttk.Frame(self)
+        head.grid(row=0, sticky="ew", pady=(0, 8))
+        head.columnconfigure(0, weight=1)
+        ttk.Label(head, textvariable=self.title_text, style="Title.TLabel", width=1).grid(
+            row=0, column=0, sticky="ew")
+        self.chat_menu = ActionMenu(head, text="对话菜单")
+        self.chat_menu.grid(row=0, column=1)
+        self.actions["export"] = self.chat_menu.add_action("导出草稿…", self.export)
+        self.actions["detach"] = self.chat_menu.add_action("清除参考文件", self.detach)
+        self.chat_menu.add_separator()
+        self.actions["new"] = self.chat_menu.add_action("清空对话…", self.clear)
         profiles = self.profile_row = ttk.Frame(self)
         profiles.grid(row=1, sticky="ew")
         ttk.Label(profiles, text="API 账号").pack(side="left", padx=(0, 8))
         self.choices = ttk.Combobox(profiles, state="readonly", width=12)
         self.choices.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.choices.bind("<<ComboboxSelected>>", self._select)
-        self._button(profiles, "add", "新建", lambda: ProfileEditor(self))
-        self._button(profiles, "import", "导入账号 JSON", self.import_profiles)
-        self.settings_toggle = ttk.Button(profiles, text="账号管理 ▾", command=self._toggle_settings)
-        self.settings_toggle.pack(side="left")
-        self.settings = ttk.Frame(self)
-        self.settings.grid(row=2, sticky="w", pady=(6, 0))
-        self._button(self.settings, "edit", "编辑", lambda: ProfileEditor(self, self.profiles[self.choices.current()]))
-        self._button(self.settings, "delete", "删除", self.remove_profile)
-        self._button(self.settings, "team_agent", "用于团队内置 Agent", lambda: self.apply_profile(True))
-        self._button(self.settings, "team_provider", "用于同名模型成员", lambda: self.apply_profile(False))
-        self.settings.grid_remove()
+        self.account_menu = ActionMenu(profiles, text="账号管理")
+        self.account_menu.pack(side="right")
+        self.actions["add"] = self.account_menu.add_action("新建 API 账号…", lambda: ProfileEditor(self))
+        self.actions["import"] = self.account_menu.add_action("导入账号 JSON…", self.import_profiles)
+        self.actions["edit"] = self.account_menu.add_action("编辑当前账号…", lambda: ProfileEditor(
+            self, self.profiles[self.choices.current()]))
+        self.account_menu.add_separator()
+        self.actions["team_agent"] = self.account_menu.add_action("用于团队内置 Agent", lambda: self.apply_profile(True))
+        self.actions["team_provider"] = self.account_menu.add_action("用于同名模型成员", lambda: self.apply_profile(False))
+        self.account_menu.add_separator()
+        self.actions["delete"] = self.account_menu.add_action("删除当前账号…", self.remove_profile)
         self.bot_row = ttk.Frame(self)
         self.bot_row.columnconfigure(0, weight=1)
         self.bot_info = tk.StringVar(self)
-        ttk.Label(self.bot_row, textvariable=self.bot_info, style="Hint.TLabel", wraplength=365).grid(row=0, column=0, sticky="w")
-        self.bind_bot = ttk.Button(self.bot_row, text="用于团队内置 Agent", command=lambda: self.apply_profile(True))
-        self.bind_bot.grid(row=0, column=1, sticky="e")
-        self.edit_bot = ttk.Button(self.bot_row, text="Bot 设置…", command=lambda: self.desk.bots.edit(self.active_bot))
-        self.edit_bot.grid(row=0, column=2, padx=(5, 0), sticky="e")
-        conversation = ttk.Frame(self)
-        conversation.grid(row=3, sticky="ew", pady=(12, 5))
-        ttk.Label(conversation, text="对话", style="Section.TLabel").pack(side="left")
-        self._button(conversation, "new", "清空对话", self.clear, side="right")
-        self.memory_button = ttk.Button(conversation, text="长期记忆…", command=self.edit_memory)
+        info = ttk.Label(self.bot_row, textvariable=self.bot_info, style="Hint.TLabel", width=1)
+        info.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.bot_menu = ActionMenu(self.bot_row, text="Bot 管理")
+        self.bot_menu.grid(row=0, column=1, sticky="e")
+        self.edit_bot = self.bot_menu.add_action("Bot 设置…", lambda: self.desk.bots.edit(self.active_bot))
+        self.memory_button = self.bot_menu.add_action("长期记忆…", self.edit_memory)
+        self.bind_bot = self.bot_menu.add_action("用于团队内置 Agent", lambda: self.apply_profile(True))
         chat = ttk.Frame(self)
-        chat.grid(row=4, sticky="nsew")
+        chat.grid(row=2, sticky="nsew", pady=(9, 0))
         self.transcript = ScrolledText(chat, height=3, width=20, wrap="word", state="disabled")
         style_text(self.transcript)
         self.transcript.pack(fill="both", expand=True)
-        self.transcript.tag_configure("sender", foreground=INK, font=(FONT, 11, "bold"), spacing1=12, spacing3=3)
+        self.transcript.tag_configure("sender", foreground=ACCENT, font=(FONT, 11, "bold"), spacing1=12, spacing3=3)
         self.transcript.tag_configure("reply", foreground=INK, spacing3=10, lmargin1=6, lmargin2=6)
         self.transcript.tag_configure("user_name", foreground=MUTED, font=(FONT, 9, "bold"),
                                       justify="right", spacing1=9, spacing3=3, rmargin=12)
         self.transcript.tag_configure("user_message", background=SUBTLE, foreground=INK, justify="right",
                                       lmargin1=38, lmargin2=38, rmargin=12, spacing1=6, spacing3=6)
-        self.empty = tk.Label(chat, bg=self.transcript.cget("background"), fg=MUTED, justify="center", font=(FONT, 10))
+        self.empty_icon = icon(chat, "lite", ACCENT, 32)
+        self.empty = tk.Label(chat, image=self.empty_icon, compound="top", pady=8, wraplength=320,
+                              bg=self.transcript.cget("background"), fg=MUTED, justify="center", font=(FONT, 10))
         self.hint = tk.StringVar(self)
         note = ttk.Label(self, textvariable=self.hint, style="Hint.TLabel")
-        note.grid(row=5, sticky="w", pady=(4, 2))
+        note.grid(row=3, sticky="w", pady=(4, 2))
         self.bind("<Configure>", lambda event: note.configure(wraplength=max(160, event.width-40)))
         compose = ttk.Frame(self)
-        compose.grid(row=6, sticky="ew", pady=(2, 5))
+        compose.grid(row=4, sticky="ew", pady=(2, 5))
         ttk.Label(compose, text="任务或问题", style="Section.TLabel").pack(side="left")
         self.summary = tk.StringVar(self)
         ttk.Label(compose, textvariable=self.summary, style="Hint.TLabel").pack(side="right")
         self.prompt = ScrolledText(self, height=2, width=20, wrap="word")
         style_text(self.prompt, editor=True)
-        self.prompt.grid(row=7, sticky="ew")
+        self.prompt.grid(row=5, sticky="ew")
         row = ttk.Frame(self)
-        row.grid(row=8, sticky="ew", pady=(6, 0))
+        row.grid(row=6, sticky="ew", pady=(6, 0))
         self._button(row, "attach", "添加参考文件…", self.attach)
-        self._button(row, "detach", "清除参考文件", self.detach)
-        self._button(row, "export", "导出草稿…", self.export)
         self._button(row, "send", "发送", self.submit, side="right", style="Accent.TButton")
-        self._button(row, "stop", "停止", self.cancel, side="right")
+        self._button(row, "stop", "停止", self.cancel, side="right", style="Danger.TButton")
         self._render()
         self.bind("<Map>", self._on_map)
 
@@ -208,10 +215,7 @@ class LitePanel(ttk.Frame):
         self.selected_id = None
         self.title_text.set(bot["name"])
         self.profile_row.grid_remove()
-        self.settings.grid_remove()
-        self.settings_toggle.configure(text="账号管理 ▾")
         self.bot_row.grid(row=1, sticky="ew")
-        self.memory_button.pack(side="right", padx=(0, 6))
         if not self.refresh_profiles():
             self.prompt.delete("1.0", "end")
             return True
@@ -228,7 +232,6 @@ class LitePanel(ttk.Frame):
         self.active_bot = None
         self.title_text.set("内置 Agent")
         self.bot_row.grid_remove()
-        self.memory_button.pack_forget()
         self.profile_row.grid()
         self.refresh_profiles(self.account_id)
         self._restore_input()
@@ -250,14 +253,6 @@ class LitePanel(ttk.Frame):
         if self.selected_id:
             self.prompt.insert("1.0", self._session().get("input", ""))
         self.hint.set("")
-
-    def _toggle_settings(self):
-        if self.settings.winfo_manager():
-            self.settings.grid_remove()
-            self.settings_toggle.configure(text="账号管理 ▾")
-        else:
-            self.settings.grid()
-            self.settings_toggle.configure(text="收起管理 ▴")
 
     def _button(self, parent, key, title, command, *, side="left", style="TButton"):
         btn = self.actions[key] = ttk.Button(parent, text=title, command=command, style=style, width=0)
@@ -386,7 +381,7 @@ class LitePanel(ttk.Frame):
         if not self.selected_id:
             self.refresh_profiles()
         if not self.selected_id:
-            raise ValueError("请在「内置 Agent」新建或导入一个 API 账号。")
+            raise ValueError("请在「内置 Agent」的「账号管理」中新建或导入一个 API 账号。")
         if self.active_bot and self.selected_id != self.active_bot["profile_id"]:
             raise ValueError("Bot 的账号绑定已改变，请重新打开这个 Bot。")
         config = self.desk.account_store.resolve(self.selected_id)
@@ -419,13 +414,17 @@ class LitePanel(ttk.Frame):
             if has:
                 text = "输入任务，或添加一份参考文件开始对话。"
             elif self.active_bot:
-                text = "请在 Bot 设置中检查绑定的 API 账号。"
+                text = "打开「Bot 管理」里的「Bot 设置」，检查绑定的 API 账号。"
             else:
-                text = "点「新建」或「导入账号 JSON」连接第一个账号。"
+                text = "打开「账号管理」，新建或导入第一个 API 账号。"
             self.empty.configure(text=text)
             self.empty.place(relx=.5, rely=.5, anchor="center")
-        self.summary.set(f"参考文件 {len(files)} 个　草稿 {len(drafts)} 个")
+        self.summary.set("　".join(f"{len(entries)} 个{label}" for entries, label in
+                                  ((files, "参考文件"), (drafts, "草稿")) if entries))
         self.choices.configure(state="disabled" if active or self.active_bot else "readonly")
+        self.account_menu.configure(state="disabled" if active else "normal")
+        self.bot_menu.configure(state="disabled" if active else "normal")
+        self.chat_menu.configure(state="normal" if has and not active else "disabled")
         self.bind_bot.configure(state="normal" if has and not active else "disabled")
         self.edit_bot.configure(state="disabled" if active else "normal")
         self.memory_button.configure(state="normal" if has and not active else "disabled")

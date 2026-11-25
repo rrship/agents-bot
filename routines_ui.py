@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
+from action_menu import ActionMenu
 import desktop_style as ui
 from routines import ACTIVE, FREQUENCIES, RoutineStore
 
@@ -106,25 +107,27 @@ class RoutinesPanel(ttk.Frame):
         self.listing = self._tree(left, 1, (("name", "任务", 124), ("state", "状态", 54)), "Plan.Treeview")
         self.listing.configure(show="")
         self.listing.column("state", width=52, stretch=False, anchor="center")
+        self.listing.tag_configure("paused", foreground=ui.MUTED)
         self.listing.bind("<<TreeviewSelect>>", self._select)
         self.listing.bind("<Double-1>", lambda _: self.edit_current())
-        actions = ttk.Frame(left)
-        actions.grid(row=2, sticky="ew", pady=(8, 0))
-        for i in range(2):
-            actions.columnconfigure(i, weight=1, uniform="actions")
-        self.buttons = {}
-        for i, (label, fn) in enumerate((("立即运行", self.run_now), ("编辑", self.edit_current),
-                                         ("暂停", self.toggle), ("删除", self.delete))):
-            button = ttk.Button(actions, text=label, command=fn, state="disabled",
-                                style="Accent.TButton" if i == 0 else "TButton")
-            button.grid(row=i//2, column=i%2, sticky="ew", padx=(0, 3), pady=2)
-            self.buttons[label] = button
         detail = ttk.Frame(self.body, padding=(16, 8), borderwidth=1, relief="solid")
         detail.grid(row=0, column=1, sticky="nsew")
         detail.columnconfigure(0, weight=1)
         detail.rowconfigure(7, weight=1)
-        self.detail_name = ttk.Label(detail, font=(ui.FONT, 14, "bold"), width=1)
-        self.detail_name.grid(row=0, sticky="ew", pady=(3, 2))
+        headline = ttk.Frame(detail)
+        headline.grid(row=0, sticky="ew", pady=(3, 2))
+        headline.columnconfigure(0, weight=1)
+        self.detail_name = ttk.Label(headline, font=(ui.FONT, 14, "bold"), width=1)
+        self.detail_name.grid(row=0, column=0, sticky="ew")
+        self.plan_menu = ActionMenu(headline, text="计划菜单")
+        self.plan_menu.grid(row=0, column=1, padx=(4, 0))
+        run = ttk.Button(headline, text="立即运行", style="Accent.TButton", command=self.run_now, state="disabled")
+        run.grid(row=0, column=2, padx=(6, 0))
+        self.buttons = {"立即运行": run,
+                        "编辑": self.plan_menu.add_action("编辑…", self.edit_current, enabled=False),
+                        "暂停": self.plan_menu.add_action("暂停", self.toggle, enabled=False)}
+        self.plan_menu.add_separator()
+        self.buttons["删除"] = self.plan_menu.add_action("删除…", self.delete, enabled=False)
         self.meta = ttk.Label(detail, style="Hint.TLabel", width=1)
         self.meta.grid(row=1, sticky="ew", pady=(0, 9))
         ttk.Label(detail, text="任务指令", style="Section.TLabel").grid(row=2, sticky="w", pady=(0, 5))
@@ -144,11 +147,10 @@ class RoutinesPanel(ttk.Frame):
         self.empty.grid(row=2, sticky="nsew")
         middle = ttk.Frame(self.empty)
         middle.place(relx=.5, rely=.42, anchor="center")
-        self.empty_icon = ui.icon(self.empty, "routines", ui.MUTED, 36)
+        self.empty_icon = ui.icon(self.empty, "routines", ui.ACCENT, 36)
         ttk.Label(middle, image=self.empty_icon).pack(pady=(0, 8))
         ttk.Label(middle, text="还没有例行任务", style="Section.TLabel").pack()
         ttk.Label(middle, text="创建计划，让一位 Bot 按时执行你的指令。", style="Hint.TLabel").pack(pady=5)
-        ttk.Button(middle, text="新建任务", command=self.edit_new).pack(pady=4)
         self.body.grid_remove()
         self.bind("<Destroy>", self._destroyed, add="+")
 
@@ -174,7 +176,8 @@ class RoutinesPanel(ttk.Frame):
                 for rid, row in rows.items():
                     schedule = FREQUENCIES[row["frequency"]] + " " + row["clock"]
                     self.listing.insert("", "end", iid=rid, values=(
-                        row["name"] + "\n" + schedule, "启用" if row["enabled"] else "暂停"))
+                        row["name"] + "\n" + schedule, "启用" if row["enabled"] else "暂停"),
+                        tags=() if row["enabled"] else ("paused",))
                 self.rows = rows
             if rows:
                 self.empty.grid_remove()
@@ -195,6 +198,7 @@ class RoutinesPanel(ttk.Frame):
         selected = self.listing.selection()
         self.selected = selected[0] if selected else None
         row = self.rows.get(self.selected)
+        self.plan_menu.configure(state="normal" if row else "disabled")
         for button in self.buttons.values():
             button.configure(state="normal" if row else "disabled")
         if row:

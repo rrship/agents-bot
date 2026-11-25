@@ -1,6 +1,7 @@
 import tkinter as tk
 import unittest
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import os
 from unittest.mock import patch
 
@@ -71,14 +72,50 @@ class DesktopLayoutTests(unittest.TestCase):
 
     def test_empty_feed_and_tagged_activity_keep_original_mobile_event(self):
         desk = self.desk
+        self.assertFalse(desk.chat_card.winfo_ismapped())
         line = "GPT → Gemini [分工说明] 请检查接口。\n保留第二行。"
         desk._append(line)
+        self.root.update_idletasks()
+        self.assertTrue(desk.chat_card.winfo_ismapped())
         self.assertFalse(desk.empty_feed.winfo_manager())
         self.assertEqual(desk.activity[-1], line)
         self.assertTrue(desk.log.tag_ranges("speaker"))
         self.assertIn("保留第二行。", desk.log.get("1.0", "end"))
         desk._clear_log()
+        self.root.update_idletasks()
+        self.assertFalse(desk.chat_card.winfo_ismapped())
         self.assertTrue(desk.empty_feed.winfo_manager())
+
+    def test_task_menu_and_primary_controls_follow_job_state(self):
+        desk = self.desk
+        self.assertTrue(desk.task_menu.winfo_ismapped())
+        self.assertTrue(desk.reopen.instate(["!disabled"]))
+        self.assertTrue(desk.cancel_btn.instate(["disabled"]))
+        desk.job = SimpleNamespace(state={"status": "已暂停"}, path=self.temp.name)
+        desk.running = desk.chat_focus = True
+        desk._controls()
+        self.root.update_idletasks()
+        self.assertTrue(desk.pause.winfo_ismapped())
+        self.assertFalse(desk.settings_card.winfo_ismapped())
+        self.assertTrue(desk.reopen.instate(["disabled"]))
+        desk.checks_button.invoke()
+        self.root.update_idletasks()
+        self.assertTrue(desk.tests.winfo_ismapped())
+        self.assertTrue(desk.tests.cget("state") == "disabled")
+        desk.running = False
+        desk._controls()
+        self.root.update_idletasks()
+        self.assertTrue(desk.resume.winfo_ismapped())
+        self.assertFalse(desk.pause.winfo_ismapped())
+        self.assertTrue(desk.new_button.instate(["!disabled"]))
+        desk.job.state["status"] = "完成"
+        desk._controls()
+        self.assertFalse(desk.resume.winfo_manager())
+        self.assertTrue(desk.cancel_btn.instate(["disabled"]))
+        desk.new_button.invoke()
+        self.root.update_idletasks()
+        self.assertTrue(desk.start_button.winfo_ismapped())
+        self.assertFalse(desk.chat_card.winfo_ismapped())
 
     def test_long_task_can_scroll_after_starting_with_empty_editor(self):
         goal = self.desk.goal

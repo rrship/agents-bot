@@ -46,6 +46,9 @@ class LitePanelTests(unittest.TestCase):
         panel = self.panel
         panel.refresh_profiles()
         self.assertTrue(panel.actions["send"].instate(["disabled"]))
+        self.assertFalse(panel.account_menu.instate(["disabled"]))
+        self.assertTrue(panel.chat_menu.instate(["disabled"]))
+        self.assertEqual(panel.account_menu.menu.entrycget("编辑当前账号…", "state"), "disabled")
         uid = self.profile()
         editor = ProfileEditor(panel, panel.profiles[0])
         self.assertEqual(editor.fields["api_key"].get(), "")
@@ -57,7 +60,7 @@ class LitePanelTests(unittest.TestCase):
         data.write_text(json.dumps(dict(version=1, accounts=[dict(name="second", provider="Kimi", model="test",
                                                                    key_env="LITE_UI_TEST_KEY")])), encoding="utf-8")
         with patch("lite_ui.filedialog.askopenfilename", return_value=str(data)):
-            panel.actions["import"].invoke()
+            panel.account_menu.menu.invoke("导入账号 JSON…")
         second = panel.selected_id
         self.assertNotEqual(second, uid)
         self.assertEqual(panel.current_config()["provider"], "Kimi")
@@ -110,8 +113,12 @@ class LitePanelTests(unittest.TestCase):
             panel.actions["send"].invoke()
             try:
                 self.assertTrue(entered.wait(2))
+                self.assertTrue(panel.account_menu.instate(["disabled"]))
+                self.assertTrue(panel.chat_menu.instate(["disabled"]))
                 panel.actions["stop"].invoke()
                 self.assertIsNone(panel.stop)
+                self.assertFalse(panel.account_menu.instate(["disabled"]))
+                self.assertFalse(panel.chat_menu.instate(["disabled"]))
             finally:
                 finish.set()
             deadline = time.monotonic() + 2

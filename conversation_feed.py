@@ -13,8 +13,8 @@ _HEADER = re.compile(
 )
 _SYSTEM = re.compile(r"^(?:任务目录\s|任务目标 · |集成文件\s|验收\s|已载入任务\s|任务受阻[：:]|完成[：:]|"
                      r"待人工验收[：:]|已请求暂停|正在暂停|已取消$|已暂停$|受阻$|完成$|待人工验收$)")
-_COLORS = (("#e0edff", "#1d4ed8"), ("#ede9fe", "#5b21b6"), ("#dcfce7", "#166534"),
-           ("#ffedd5", "#9a3412"), ("#cffafe", "#155e75"), ("#fce7f3", "#9d174d"))
+_COLORS = (("#3b305a", "#ccbcff"), ("#203d40", "#83e2cc"), ("#283c5c", "#a7c8ff"),
+           ("#443627", "#efc48a"), ("#223e54", "#8cdcf6"), ("#4a2e45", "#f6b9dc"))
 
 
 def _events(text):
@@ -45,14 +45,14 @@ class ConversationFeed(ttk.Frame):
                                 cursor="xterm", takefocus=True, undo=False)
         ui.style_text(self.log)
         self.log.grid(row=0, column=0, sticky="nsew")
-        self.log.configure(padx=6, pady=6, spacing1=0, spacing3=0)
+        self.log.configure(padx=8, pady=6, spacing1=0, spacing3=0)
         for i, (_background, foreground) in enumerate(_COLORS):
             self.log.tag_configure(f"member{i}", foreground=foreground)
         self.log.tag_configure("speaker", font=(ui.FONT, 11, "bold"))
         self.log.tag_configure("avatar", spacing1=12, spacing3=2, lmargin1=1)
         self.log.tag_configure("to", font=(ui.FONT, 9), foreground=ui.MUTED, lmargin2=8)
         self.log.tag_configure("phase", foreground=ui.MUTED, font=(ui.FONT, 9))
-        self.log.tag_configure("handoff", foreground="#5b21b6")
+        self.log.tag_configure("handoff", foreground=ui.MINT)
         self.log.tag_configure("message", foreground=ui.INK, font=(ui.FONT, 10),
                                lmargin1=38, lmargin2=38, rmargin=12, spacing1=2, spacing2=3, spacing3=8)
         self.log.tag_configure("subject", font=(ui.FONT, 13, "bold"), foreground=ui.INK,
@@ -60,8 +60,19 @@ class ConversationFeed(ttk.Frame):
         self.log.tag_configure("system", foreground=ui.MUTED, font=(ui.FONT, 9),
                                lmargin1=4, lmargin2=15, rmargin=4, spacing1=5, spacing2=1)
         self.empty_feed = ttk.Frame(self, padding=8)
-        self._empty_icon = ui.icon(self, "team", ui.MUTED, 26)
-        ttk.Label(self.empty_feed, image=self._empty_icon).pack()
+        self._empty_art = tk.Canvas(self.empty_feed, width=158, height=64, background=ui.SURFACE,
+                                    borderwidth=0, highlightthickness=0, takefocus=0)
+        self._empty_art.pack()
+        self._avatar_images = []
+        for x, y, destination_x, destination_y in ((43, 29, 58, 37), (98, 37, 115, 24)):
+            self._empty_art.create_line(x, y, destination_x, destination_y, fill=ui.MUTED, dash=(2, 3),
+                                        width=1, arrow="last", arrowshape=(4, 5, 2))
+        for x, y, idx, radius in ((26, 22, 0, 16), (78, 40, 1, 18), (133, 19, 2, 16)):
+            self._empty_art.create_oval(x-radius, y-radius, x+radius, y+radius,
+                                        outline=_COLORS[idx][0], fill=ui.FIELD, width=2)
+            img = ui.bot_avatar(self._empty_art, idx, size=radius+3)
+            self._avatar_images.append(img)
+            self._empty_art.create_image(x, y, image=img)
         ttk.Label(self.empty_feed, text="尚无团队消息", style="Section.TLabel").pack(pady=(5, 3))
         ttk.Label(self.empty_feed, text="开始任务后，在这里查看成员的分工、交接和回复。",
                   wraplength=200, justify="center", style="Hint.TLabel").pack()

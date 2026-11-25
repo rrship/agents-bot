@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk
 from uuid import uuid4
 
+from action_menu import ActionMenu
 from engine import clean_path, parse
 from handoff import parse_handoff
 from software_bridge import BridgeError, SOFTWARE_NAMES
@@ -138,28 +139,21 @@ class SoftwarePanel(ttk.Frame):
         self.help_label = ttk.Label(self, textvariable=self.guidance, wraplength=500,
                                     justify="left", style="Hint.TLabel")
         self.help_label.grid(row=6, sticky="ew", pady=(5, 6))
-        actions = ttk.Frame(self)
-        actions.grid(row=7, sticky="w")
-        self.install_button = ttk.Button(actions, text="写入 MCP 配置", command=self.install_config)
-        self.install_button.grid(row=0, column=0, padx=(0, 5))
-        self.copy_config = ttk.Button(actions, text="复制配置", command=self.copy_settings)
-        self.copy_config.grid(row=0, column=1, padx=(0, 5))
-        self.copy_instruction = ttk.Button(actions, text="复制领取指令", command=self.copy_prompt)
-        self.copy_instruction.grid(row=0, column=2)
-        self.manual = ttk.Frame(self)
-        self.manual.grid(row=8, sticky="ew", pady=(12, 0))
-        ttk.Separator(self.manual).pack(fill="x", pady=(0, 7))
-        ttk.Label(self.manual, text="手动交接", style="Section.TLabel").pack(anchor="w")
-        ttk.Label(self.manual, text="把任务粘贴到对应软件，复制它的完整 JSON 回复后交回。",
-                  style="Hint.TLabel", wraplength=450).pack(anchor="w", pady=(2, 5))
-        row = ttk.Frame(self.manual)
-        row.pack(anchor="w")
-        self.claim_button = ttk.Button(row, text="领取并复制任务", command=self.claim)
-        self.claim_button.pack(side="left", padx=(0, 5))
-        self.submit_button = ttk.Button(row, text="粘贴并提交结果", command=self.submit)
-        self.submit_button.pack(side="left")
+        self.mcp_actions = ttk.Frame(self)
+        self.mcp_actions.grid(row=7, sticky="w")
+        self.copy_instruction = ttk.Button(self.mcp_actions, text="复制领取指令", style="Accent.TButton",
+                                           command=self.copy_prompt)
+        self.copy_instruction.pack(side="left", padx=(0, 6))
+        self.setup_menu = ActionMenu(self.mcp_actions, text="接入选项")
+        self.setup_menu.pack(side="left", padx=(0, 6))
+        self.install_button = self.setup_menu.add_action("写入 MCP 配置", self.install_config)
+        self.setup_menu.add_action("复制 MCP 配置", self.copy_settings)
+        self.handoff_menu = ActionMenu(self.mcp_actions, text="手动交接")
+        self.handoff_menu.pack(side="left")
+        self.handoff_menu.add_action("领取并复制任务", self.claim)
+        self.submit_button = self.handoff_menu.add_action("粘贴并提交结果", self.submit)
         self.status_label = ttk.Label(self, textvariable=self.status, wraplength=500, justify="left")
-        self.status_label.grid(row=9, sticky="ew", pady=(8, 0))
+        self.status_label.grid(row=8, sticky="ew", pady=(8, 0))
         self.bind("<Configure>", self.resize)
         self._traces = [(variable, variable.trace_add("write", self.render)) for variable in
                         (self.app_name, self.harness_mode, self.codex_mode)]
@@ -225,22 +219,12 @@ class SoftwarePanel(ttk.Frame):
         else:
             self.routes.grid_remove()
         if native:
-            self.manual.grid_remove()
-        else:
-            self.manual.grid()
-        if native:
+            self.mcp_actions.grid_remove()
             self.guidance.set(NATIVE_HELP if deepseek else CODEX_HELP)
         else:
+            self.mcp_actions.grid()
             self.guidance.set(GUIDES[app])
-        if app in ("Codex", "Claude Desktop") and not native:
-            self.install_button.grid()
-        else:
-            self.install_button.grid_remove()
-        for button in (self.copy_config, self.copy_instruction):
-            if native:
-                button.grid_remove()
-            else:
-                button.grid()
+        self.install_button.configure(state="normal" if app in ("Codex", "Claude Desktop") and not native else "disabled")
         self.submit_button.configure(state="normal" if app in self.tickets else "disabled")
         self.status.set(self.notes.get(app, "") if not native else "")
         self.queue_state.set("")
@@ -311,7 +295,8 @@ class SoftwarePanel(ttk.Frame):
             else:
                 self.tickets[app] = task
                 self.copy(task["prompt"])
-                self.note(f"已复制 {app} 的任务 {task['task_id'][:8]}。请粘贴到目标对话。")
+                self.note(f"已复制 {app} 的任务 {task['task_id'][:8]}。请粘贴到目标对话，"
+                          "复制完整 JSON 回复后，在「手动交接」中选择「粘贴并提交结果」。")
         except tk.TclError:
             self.note("任务已领取，复制失败。请再次点击领取并复制任务。")
         except (BridgeError, ValueError, OSError, sqlite3.Error) as error:

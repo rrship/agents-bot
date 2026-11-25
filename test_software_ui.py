@@ -42,19 +42,20 @@ class SoftwareUI(unittest.TestCase):
         self.assertTrue(self.desk.member_vars["DeepSeek Harness"].get())
         self.assertEqual(self.panel.config("DeepSeek Harness")["transport"], "baton")
         self.desk.bridge.assert_not_called()
-        self.assertFalse(self.panel.manual.winfo_manager())
+        self.assertFalse(self.panel.mcp_actions.winfo_manager())
         self.panel.harness_mode.set("mcp")
         self.assertEqual(self.panel.config("DeepSeek Harness")["bridge"], self.desk.bridge.return_value)
-        self.assertTrue(self.panel.manual.winfo_manager())
+        self.assertTrue(self.panel.mcp_actions.winfo_manager())
 
     def test_codex_independent_session_does_not_claim_mcp_tasks(self):
         self.panel.codex_mode.set("codex-native")
         self.assertEqual(self.panel.config("Codex"), {"mode": "software", "transport": "codex-native"})
         self.desk.bridge.assert_not_called()
-        self.assertFalse(self.panel.manual.winfo_manager())
-        self.assertFalse(self.panel.install_button.winfo_manager())
+        self.assertFalse(self.panel.mcp_actions.winfo_manager())
+        self.assertTrue(self.panel.install_button.instate(["disabled"]))
         self.panel.codex_mode.set("mcp")
-        self.assertTrue(self.panel.install_button.winfo_manager())
+        self.assertTrue(self.panel.mcp_actions.winfo_manager())
+        self.assertTrue(self.panel.install_button.instate(["!disabled"]))
         self.assertIs(self.panel.config("Codex")["bridge"], self.desk.bridge.return_value)
 
     def test_config_formats_and_explicit_install(self):
@@ -79,7 +80,7 @@ class SoftwareUI(unittest.TestCase):
         bridge = self.desk.bridge.return_value
         bridge.claim.return_value = {"task_id": "fixture", "lease": "lease", "prompt": "fixture"}
         with patch.object(self.panel, "copy") as copy:
-            self.panel.claim_button.invoke()
+            self.panel.handoff_menu.menu.invoke("领取并复制任务")
             copy.assert_called_once_with("fixture")
         self.panel.app_name.set("ZCode")
         self.assertTrue(self.panel.submit_button.instate(["disabled"]))
@@ -100,7 +101,7 @@ class SoftwareUI(unittest.TestCase):
         bridge = self.desk.bridge.return_value
         bridge.claim.return_value = {"task_id": "old", "lease": "lease", "prompt": "fixture"}
         with patch.object(self.panel, "copy"):
-            self.panel.claim_button.invoke()
+            self.panel.handoff_menu.menu.invoke("领取并复制任务")
         bridge.complete.side_effect = BridgeError("任务已撤回")
         with patch.object(self.panel, "clipboard_get", return_value='{"message":"旧回包"}'):
             self.panel.submit_button.invoke()

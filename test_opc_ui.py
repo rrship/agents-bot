@@ -107,7 +107,9 @@ class OPCPanelTests(unittest.TestCase):
             info = role_info(role)
             self.assertIn(info["instructions"], body)
             self.assertIn(info["skills"][0], body)
-        for widget in (panel.bulk_button, panel.start_button, panel.accounts_button, panel.connect_button,
+        self.assertEqual(panel.accounts_button.cget("text"), "配置 API 账号")
+        self.assertEqual(panel.connect_button.cget("text"), "连接本地软件")
+        for widget in (panel.bulk_button, panel.start_button, panel.connection_menu,
                        panel.handbook, *panel.checks.values(), *panel.boxes.values(),
                        *panel.details_buttons.values()):
             self.assertTrue(widget.winfo_ismapped(), str(widget))

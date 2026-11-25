@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
+from action_menu import ActionMenu
 from cloud_room import snapshot, validated_files
 from cloud_ssh import CloudSSH
 from cloud_worker import run_team
@@ -130,8 +131,10 @@ class CloudPanel(ttk.Frame):
         identity.grid(row=2, sticky="ew", pady=(1, 4))
         self.identity = ""
         self._button(identity, "connect", "连接", self.connect, primary=True)
-        self._button(identity, "identity", "选择私钥…", self.choose_identity)
-        self._button(identity, "disconnect", "断开", self.disconnect)
+        self.connection_menu = ActionMenu(identity, text="连接设置")
+        self.connection_menu.pack(side="left")
+        self.buttons["identity"] = self.connection_menu.add_action("选择私钥…", self.choose_identity)
+        self.buttons["disconnect"] = self.connection_menu.add_action("断开连接", self.disconnect)
         ttk.Label(connection, text="首次连接请核对服务器指纹，密码或密钥口令在 SSH 窗口输入。",
                   style="Hint.TLabel", wraplength=440).grid(row=3, sticky="w", pady=(2, 10))
         ttk.Separator(connection).grid(row=4, sticky="ew", pady=(3, 10))
@@ -142,9 +145,7 @@ class CloudPanel(ttk.Frame):
         self.room_entry = ttk.Entry(rooms, textvariable=self.room, width=15)
         self.room_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
         self._button(rooms, "join", "加入", self.join)
-        room_actions = ttk.Frame(connection)
-        room_actions.grid(row=7, sticky="w", pady=(3, 6))
-        self._button(room_actions, "create", "从工作台创建房间", self.create)
+        self._button(rooms, "create", "从工作台创建房间", self.create)
 
         members = ttk.Frame(self.progress)
         members.grid(row=0, sticky="ew", pady=(0, 5))
@@ -158,20 +159,23 @@ class CloudPanel(ttk.Frame):
             self.checks[name] = box
         controls = ttk.Frame(self.progress)
         controls.grid(row=1, sticky="ew", pady=(2, 4))
-        self._button(controls, "local", "本机参与", self.start_local)
-        self._button(controls, "stop_local", "停止本机参与", self.stop_local)
-        self._button(controls, "server", "启动服务器 API", lambda: self.server(True))
-        self._button(controls, "stop_server", "停止服务器 API", lambda: self.server(False))
+        self._button(controls, "local", "本机参与", self.start_local, primary=True)
+        self.run_menu = ActionMenu(controls, text="运行选项")
+        self.run_menu.pack(side="left")
+        self.buttons["stop_local"] = self.run_menu.add_action("停止本机参与", self.stop_local)
+        self.run_menu.add_separator()
+        self.buttons["server"] = self.run_menu.add_action("启动服务器 API", lambda: self.server(True))
+        self.buttons["stop_server"] = self.run_menu.add_action("停止服务器 API", lambda: self.server(False))
         ttk.Separator(self.progress).grid(row=2, sticky="ew", pady=(8, 8))
         actions = ttk.Frame(self.progress)
         actions.grid(row=3, sticky="ew")
         ttk.Label(actions, text="房间进度", style="Section.TLabel").pack(side="left")
         ttk.Checkbutton(actions, text="手机显示此房间", variable=self.share,
                         command=desk.publish_mobile).pack(side="right")
-        export = self._button(actions, "export", "导出文件…", self.export)
-        export.pack_configure(side="right", padx=(0, 8))
-        copy = self._button(actions, "copy", "复制房间号", self.copy)
-        copy.pack_configure(side="right", padx=(0, 5))
+        self.room_menu = ActionMenu(actions, text="房间操作")
+        self.room_menu.pack(side="right", padx=(0, 8))
+        self.buttons["copy"] = self.room_menu.add_action("复制房间号", self.copy)
+        self.buttons["export"] = self.room_menu.add_action("导出文件…", self.export)
         self.heading = tk.StringVar(value="加入房间后可查看任务与交接记录。")
         heading = ttk.Label(self.progress, textvariable=self.heading, style="Hint.TLabel", wraplength=470)
         heading.grid(row=4, sticky="ew", pady=(4, 0))

@@ -127,6 +127,8 @@ class RoutinesTests(unittest.TestCase):
         rid = panel.selected
         self.assertEqual(panel.rows[rid]["enabled"], 0)
         self.assertEqual(panel.buttons["暂停"].cget("text"), "启用")
+        self.assertTrue(panel.plan_menu.winfo_ismapped())
+        self.assertTrue(panel.buttons["立即运行"].winfo_ismapped())
         with patch("routines.call", return_value="周会议程草案"):
             panel.run_now()
             deadline = time.monotonic() + 5
@@ -135,7 +137,13 @@ class RoutinesTests(unittest.TestCase):
                 root.update()
                 time.sleep(.01)
         self.assertIn("周会议程草案", panel.answer.get("1.0", "end-1c"))
-        panel.buttons["暂停"].invoke()
+        panel.plan_menu.open()
+        root.update_idletasks()
+        self.assertTrue(panel.plan_menu.popup.winfo_ismapped())
+        box, = panel.plan_menu.popup.winfo_children()
+        next(widget for widget in box.winfo_children() if isinstance(widget, tk.Button)
+             and widget.cget("text") == "启用").invoke()
+        self.assertIsNone(panel.plan_menu.popup)
         self.assertEqual(panel.rows[rid]["enabled"], 1)
         with patch("routines_ui.messagebox.askyesno", return_value=True):
             panel.buttons["删除"].invoke()

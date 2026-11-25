@@ -5,6 +5,7 @@ from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
 
 import desktop_style as ui
+from action_menu import ActionMenu
 from opc_skills import LEAD, ROLE_NAMES, role_info
 from software_bridge import SOFTWARE_NAMES
 
@@ -33,6 +34,10 @@ class OPCPanel(ttk.Frame):
         self.start_button = ttk.Button(header, text="进入任务工作台", style="Accent.TButton",
                                       command=desk.use_opc_team)
         self.start_button.pack(side="right")
+        self.connection_menu = ActionMenu(header, text="连接设置")
+        self.connection_menu.pack(side="right", padx=(0, 8))
+        self.accounts_button = self.connection_menu.add_action("配置 API 账号", desk.show_accounts)
+        self.connect_button = self.connection_menu.add_action("连接本地软件", self._open_software)
         ttk.Label(self, text="你给出项目目标，项目经理负责派单和验收。为每位出勤员工指定一个 API 账号或本地软件。",
                   style="Hint.TLabel", wraplength=590).grid(row=1, sticky="w", pady=(3, 9))
 
@@ -76,14 +81,8 @@ class OPCPanel(ttk.Frame):
         self.handbook.tag_configure("skills", font=(ui.FONT, 10, "bold"), foreground=ui.ACCENT, spacing3=4)
         self.handbook.tag_configure("sources", foreground=ui.MUTED, font=(ui.FONT, 9), spacing1=4)
         self.handbook.grid(row=5, column=0, sticky="nsew")
-        footer = ttk.Frame(self)
-        footer.grid(row=6, sticky="ew", pady=(7, 0))
-        self.accounts_button = ttk.Button(footer, text="配置 API 账号", command=desk.show_accounts)
-        self.accounts_button.pack(side="left", padx=(0, 6))
-        self.connect_button = ttk.Button(footer, text="连接本地软件", command=self._open_software)
-        self.connect_button.pack(side="left")
         self.notice_label = ttk.Label(self, textvariable=self.note, style="Hint.TLabel", wraplength=590)
-        self.notice_label.grid(row=7, sticky="ew", pady=(3, 0))
+        self.notice_label.grid(row=6, sticky="ew", pady=(3, 0))
         self._populate([])
         self.show_skill(LEAD)
         self.set_locked(False, False)

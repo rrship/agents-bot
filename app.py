@@ -11,6 +11,7 @@ from cloud_ui import CloudPanel
 from lite_ui import LitePanel
 from account_store import AccountStore
 import desktop_style as ui
+from action_menu import ActionMenu
 from bot_sidebar import BotRail
 from conversation_feed import ConversationFeed
 from software_bridge import Bridge, SOFTWARE_NAMES
@@ -157,28 +158,30 @@ class Desk:
     def _navigation(self):
         self.icons = {name: ui.icon(self.root, name, ui.RAIL_TEXT) for name in
                       ("tasks", "team", "software", "opc", "lite", "cloud", "phone", "search", "routines")}
-        self.icons["mark"] = ui.icon(self.root, "mark", ui.SURFACE, 24)
+        self.icons["mark"] = ui.icon(self.root, "mark", ui.ACCENT, 26)
         brand = tk.Frame(self.sidebar, bg=ui.RAIL)
         brand.pack(fill="x", padx=15, pady=(18, 12))
         tk.Label(brand, image=self.icons["mark"], bg=ui.RAIL).pack(side="left")
-        tk.Label(brand, text="Agents Bot", bg=ui.RAIL, fg=ui.SURFACE,
+        tk.Label(brand, text="Agents Bot", bg=ui.RAIL, fg=ui.INK,
                  font=("Segoe UI Semibold", 15)).pack(side="left", padx=(7, 0))
         self.nav_buttons = {}
         self.search_button = self._rail_button("搜索     Ctrl+K", "search", self.search_workspace)
         self.search_button.configure(bg=ui.RAIL_ACTIVE, highlightbackground=ui.RAIL_ACTIVE)
         self.search_button.pack(fill="x", padx=8, pady=(0, 3))
         self.root.bind("<Control-k>", self.search_workspace)
-        for group, pages in (("工作空间", ((self.tasks, "tasks"), (self.routines, "routines"), (self.opc, "opc"))),
-                             ("连接", ((self.software, "software"), (self.team, "team"),
-                                       (self.lite, "lite"), (self.cloud, "cloud")))):
-            tk.Label(self.sidebar, text=group, bg=ui.RAIL, fg=ui.RAIL_SUB,
-                     font=(FONT, 9, "bold")).pack(anchor="w", padx=16, pady=(8, 2))
-            for page, symbol in pages:
-                label = self.tabs.tab(page, "text")
-                btn = self._rail_button(label, symbol, lambda p=page: self._open_page(p))
-                btn.pack(fill="x", padx=8, pady=1)
-                self.nav_buttons[str(page)] = btn
-        self._rail_button("手机监控", "phone", self.mobile_settings).pack(side="bottom", fill="x", padx=8, pady=(4, 16))
+        tk.Label(self.sidebar, text="工作空间", bg=ui.RAIL, fg=ui.RAIL_SUB,
+                 font=(FONT, 9, "bold")).pack(anchor="w", padx=16, pady=(14, 3))
+        for page, symbol in ((self.tasks, "tasks"), (self.routines, "routines"), (self.opc, "opc")):
+            btn = self._rail_button(self.tabs.tab(page, "text"), symbol, lambda p=page: self._open_page(p))
+            btn.pack(fill="x", padx=8, pady=1)
+            self.nav_buttons[str(page)] = btn
+        self.connection_menu = ActionMenu(self.sidebar, text="设置与连接")
+        self.connection_menu.pack(side="bottom", fill="x", padx=10, pady=(8, 12))
+        for page in (self.team, self.software, self.lite, self.cloud):
+            self.nav_buttons[str(page)] = self.connection_menu.add_action(
+                self.tabs.tab(page, "text"), lambda p=page: self._open_page(p))
+        self.connection_menu.add_separator()
+        self.connection_menu.add_action("手机监控", self.mobile_settings)
         tk.Frame(self.sidebar, bg=ui.RAIL_ACTIVE, height=1).pack(side="bottom", fill="x", padx=15)
         self.bots = BotRail(self.sidebar, self)
         self.tabs.bind("<<NotebookTabChanged>>", self._nav_state)
@@ -187,7 +190,7 @@ class Desk:
     def _rail_button(self, text, symbol, command):
         return tk.Button(self.sidebar, text=text, command=command, image=self.icons[symbol], compound="left",
                          font=(FONT, 10), anchor="w", bg=ui.RAIL, fg=ui.RAIL_TEXT, relief="flat",
-                         activebackground=ui.RAIL_ACTIVE, activeforeground=ui.SURFACE, cursor="hand2",
+                         activebackground=ui.RAIL_ACTIVE, activeforeground=ui.INK, cursor="hand2",
                          borderwidth=0, highlightthickness=1, highlightcolor=ui.RAIL_SUB,
                          highlightbackground=ui.RAIL, padx=8, pady=4)
 
@@ -250,9 +253,11 @@ class Desk:
                     messagebox.showerror("读取 OPC 岗位配置", str(exc), parent=self.root)
         in_bot = current == str(self.lite) and self.lite.active_bot is not None
         for page, btn in self.nav_buttons.items():
+            if not isinstance(btn, tk.Button):
+                continue
             selected = page == current and not in_bot
             bg = ui.RAIL_ACTIVE if selected else ui.RAIL
-            btn.configure(bg=bg, highlightbackground=bg, fg=ui.SURFACE if selected else ui.RAIL_TEXT)
+            btn.configure(bg=bg, highlightbackground=bg, fg=ui.ACCENT if selected else ui.RAIL_TEXT)
         self.bots.set_active(self.lite.active_bot["id"] if in_bot else None)
 
     def use_opc_team(self):
@@ -311,11 +316,24 @@ class Desk:
         head = tk.Frame(page, bg=ui.BG)
         head.grid(row=0, column=0, sticky="ew", padx=18, pady=(14, 8))
         tk.Label(head, text="任务工作台", bg=ui.BG, fg=ui.INK, font=(FONT, 21, "bold")).pack(side="left")
-        tk.Label(head, textvariable=self.status, bg=ui.SUBTLE, fg=ui.INK, padx=10, pady=4,
-                 font=(FONT, 9)).pack(side="right")
-        selector = ttk.Frame(page, padding=(8, 3))
+        self.task_menu = ActionMenu(head, text="任务菜单")
+        self.task_menu.pack(side="right")
+        self.reopen = self.task_menu.add_action("载入任务…", self.open_job)
+        self.new_button = self.task_menu.add_action("新建任务", self.new_job)
+        self.task_menu.add_separator()
+        self.settings_toggle = self.task_menu.add_action("展开任务设置", self._toggle_task_focus)
+        self.checks_button = self.task_menu.add_action("自动验收命令", self._toggle_checks)
+        self.feedback = self.task_menu.add_action("补充要求", self.add_feedback)
+        self.diff = self.task_menu.add_action("改动差异", self.open_diff)
+        self.output = self.task_menu.add_action("交付目录", self.open_folder)
+        self.task_menu.add_separator()
+        self.cancel_btn = self.task_menu.add_action("取消任务", self.cancel_job)
+        self.pause = ttk.Button(head, text="暂停", command=self.request_pause)
+        self.resume = ttk.Button(head, text="继续", style="Accent.TButton", command=self.continue_job)
+        tk.Label(head, textvariable=self.status, bg=ui.BG, fg=ui.MINT, padx=12,
+                 font=(FONT, 9)).pack(side="left")
+        selector = tk.Frame(page, bg=ui.BG)
         selector.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 7))
-        ttk.Label(selector, text="任务模式").pack(side="left", padx=(0, 12))
         self.mode_buttons = {}
         for mode, label in TASK_MODES.items():
             button = ttk.Radiobutton(selector, text=label, variable=self.task_mode,
@@ -331,7 +349,7 @@ class Desk:
         def card(column):
             outer = tk.Frame(cards, bg=ui.SURFACE, highlightbackground=ui.BORDER, highlightthickness=1)
             outer.grid(row=0, column=column, sticky="nsew", padx=(0, 5) if column == 0 else (5, 0))
-            body = ttk.Frame(outer, padding=(12, 12))
+            body = ttk.Frame(outer, padding=(18, 16))
             body.pack(fill="both", expand=True)
             body.columnconfigure(0, weight=1)
             return body
@@ -339,7 +357,17 @@ class Desk:
         left = card(0)
         self.settings_card = left.master
         left.rowconfigure(4, weight=1)
-        ttk.Label(left, text="任务设置", style="Section.TLabel").grid(row=0, sticky="w", pady=(0, 12))
+        composer_head = tk.Frame(left, bg=ui.SURFACE)
+        composer_head.grid(row=0, sticky="ew", pady=(0, 14))
+        self.composer_accent = tk.Frame(composer_head, width=4, bg=ui.ACCENT)
+        self.composer_accent.pack(side="left", fill="y", pady=4, padx=(0, 10))
+        self.composer_title = ttk.Label(composer_head, text="发起协作", style="Title.TLabel")
+        self.composer_title.pack(side="left")
+        self.team_portrait = tk.Canvas(composer_head, bg=ui.SURFACE, width=100, height=34,
+                                       highlightthickness=0, takefocus=False)
+        self.team_portrait.pack(side="right")
+        self.portrait_icons = [ui.bot_avatar(self.team_portrait, idx, 19) for idx in range(4)]
+        self.portrait_members = None
         ttk.Label(left, text="项目目录").grid(row=1, sticky="w")
         row = ttk.Frame(left)
         row.grid(row=2, sticky="ew", pady=(3, 10))
@@ -349,7 +377,7 @@ class Desk:
         self.browse = ttk.Button(row, text="选择…", command=self._browse)
         self.browse.grid(row=0, column=1, padx=(5, 0))
         ttk.Label(left, text="需求与验收条件").grid(row=3, sticky="w")
-        self.goal = self._text(left, 3)
+        self.goal = self._text(left, 6)
         self.goal.grid(row=4, sticky="nsew", pady=(4, 8))
         self.goal_hint = tk.Label(self.goal, text="描述要完成的任务，以及怎样算完成。", anchor="nw",
                                   bg=ui.FIELD, fg=ui.MUTED, font=(FONT, 10))
@@ -358,8 +386,6 @@ class Desk:
         self.goal.bind("<FocusOut>", self._goal_hint)
         self.goal.bind("<<Modified>>", self._goal_hint)
         self._goal_hint()
-        self.checks_button = ttk.Button(left, text="▸  自动验收命令", command=self._toggle_checks)
-        self.checks_button.grid(row=5, sticky="ew")
         self.check_fields = ttk.Frame(left)
         self.check_fields.columnconfigure(0, weight=1)
         self.check_fields.grid(row=6, sticky="ew")
@@ -370,13 +396,12 @@ class Desk:
         self.smoke = self._text(self.check_fields, 1)
         self.smoke.grid(row=3, sticky="ew")
         self.check_fields.grid_remove()
-        roster_title = ttk.Frame(left)
-        roster_title.grid(row=7, sticky="ew", pady=(6, 3))
-        ttk.Label(roster_title, text="参与成员").pack(side="left")
-        self.team_link = ttk.Button(left, command=lambda: self.tabs.select(self.opc if self.task_mode.get() == OPC else self.team))
-        self.team_link.grid(row=8, sticky="ew")
-        self.start_button = ttk.Button(left, text="开始协作", style="Accent.TButton", command=self.start)
-        self.start_button.grid(row=9, sticky="ew", pady=(10, 0))
+        composer_actions = ttk.Frame(left)
+        composer_actions.grid(row=7, sticky="ew", pady=(6, 0))
+        self.team_link = ttk.Button(composer_actions, command=lambda: self.tabs.select(self.opc if self.task_mode.get() == OPC else self.team))
+        self.team_link.pack(side="left")
+        self.start_button = ttk.Button(composer_actions, text="开始协作", style="Accent.TButton", command=self.start)
+        self.start_button.pack(side="right")
 
         right = card(1)
         self.chat_card = right.master
@@ -387,26 +412,9 @@ class Desk:
         heading.grid(row=0, sticky="ew", pady=(0, 6))
         ttk.Label(heading, text="团队对话", style="Section.TLabel").pack(side="left")
         self.summary_label = ttk.Label(heading, textvariable=self.task_summary, style="Hint.TLabel")
-        self.reopen = ttk.Button(heading, text="载入任务…", command=self.open_job)
-        self.reopen.pack(side="right")
         self.feed = ConversationFeed(right)
         self.feed.grid(row=1, sticky="nsew")
         self.log, self.empty_feed = self.feed.log, self.feed.empty_feed
-        ttk.Separator(right).grid(row=2, sticky="ew", pady=(6, 5))
-        actions = self.task_actions = ttk.Frame(right)
-        actions.grid(row=3, sticky="ew")
-        for i in range(3):
-            actions.columnconfigure(i, weight=1, uniform="actions")
-        controls = (("pause", "暂停", self.request_pause), ("resume", "继续", self.continue_job),
-                    ("feedback", "补充要求", self.add_feedback), ("cancel_btn", "取消任务", self.cancel_job),
-                    ("diff", "改动差异", self.open_diff), ("output", "交付目录", self.open_folder))
-        for index, (attr, label, action) in enumerate(controls):
-            button = ttk.Button(actions, text=label, command=action)
-            button.grid(row=index//3, column=index%3, sticky="ew", padx=1, pady=2)
-            setattr(self, attr, button)
-        self.new_button = ttk.Button(head, text="新建任务", command=self.new_job)
-        self.new_button.pack(side="right", padx=(0, 8))
-        self.settings_toggle = ttk.Button(head, text="展开任务设置", command=self._toggle_task_focus)
 
     def _toggle_task_focus(self):
         self.chat_focus = not self.chat_focus
@@ -415,15 +423,18 @@ class Desk:
     def _task_layout(self):
         active = self.running or self.job is not None
         if not active:
-            self.settings_toggle.pack_forget()
             self.chat_focus = False
-        elif not self.settings_toggle.winfo_manager():
-            self.settings_toggle.pack(side="right", padx=(0, 6))
+        self.composer_title.configure(text="任务设置" if active else "发起协作")
+        self.settings_toggle.configure(state="normal" if active else "disabled",
+                                       text="展开任务设置" if self.chat_focus or not active else "收起任务设置")
+        if not active and not self.activity:
+            self.chat_card.grid_remove()
+            self.settings_card.grid_configure(column=0, columnspan=2, sticky="ew", padx=14)
+            return
         if self.chat_focus:
             self.settings_card.grid_remove()
             self.task_cards.columnconfigure(0, weight=0, uniform="")
             self.chat_card.grid_configure(column=0, columnspan=2, padx=0)
-            self.settings_toggle.configure(text="展开任务设置")
             members = self._members()
             role = f"组长 {self.leader.get()}" if self.team_mode.get() == "leader" else "平等协作"
             self.task_summary.set(f"{len(self.opc_routes)} 位员工   ·   项目经理统筹" if self.task_mode.get() == OPC
@@ -431,10 +442,9 @@ class Desk:
             self.summary_label.pack(side="left", padx=10)
         else:
             self.summary_label.pack_forget()
-            self.settings_card.grid()
+            self.settings_card.grid_configure(column=0, columnspan=1, sticky="nsew", padx=(0, 5))
             self.task_cards.columnconfigure(0, weight=10, uniform="columns")
             self.chat_card.grid_configure(column=1, columnspan=1, padx=(5, 0))
-            self.settings_toggle.configure(text="收起任务设置")
 
     def _goal_hint(self, _event=None):
         if self.goal.edit_modified():
@@ -445,12 +455,15 @@ class Desk:
             self.goal_hint.place(x=10, y=7, relwidth=.93)
 
     def _toggle_checks(self):
-        if self.check_fields.winfo_manager():
+        if self.check_fields.winfo_manager() and not self.chat_focus:
             self.check_fields.grid_remove()
-            self.checks_button.configure(text="▸  自动验收命令")
+            self.checks_button.configure(text="自动验收命令")
         else:
             self.check_fields.grid()
-            self.checks_button.configure(text="▾  自动验收命令")
+            self.chat_focus = False
+            self._task_layout()
+            self.checks_button.configure(text="收起自动验收命令")
+        self.goal.configure(height=3 if self.check_fields.winfo_manager() else 6)
 
     def _team_view(self):
         heading = ttk.Frame(self.team)
@@ -616,6 +629,15 @@ class Desk:
         else:
             label = f"{summary}  ·  {role}  ›"
         self.team_link.configure(text=label)
+        roster = tuple(self.opc_routes or ()) if self.task_mode.get() == OPC else tuple(members)
+        if roster != self.portrait_members:
+            self.portrait_members = roster
+            self.team_portrait.delete("all")
+            for idx, _ in enumerate(roster[:4]):
+                x = 85 - 22 * (min(4, len(roster)) - idx - 1)
+                self.team_portrait.create_oval(x-14, 2, x+14, 30, fill=ui.FIELD, outline=ui.BORDER)
+                self.team_portrait.create_image(x, 16, image=self.portrait_icons[idx])
+        self.composer_accent.configure(bg=ui.MINT if self.task_mode.get() == OPC else ui.ACCENT)
         for widget in self.team_controls:
             widget.configure(state="normal" if editable else "disabled")
 
@@ -699,6 +721,10 @@ class Desk:
         self.opc.connect_button.configure(state="normal" if opc else "disabled")
         self.opc.set_locked(self.running or bool(self.job and (not opc or
                             self.job.state["status"] in {"完成", "已取消", "待人工验收"})), self.job is not None)
+        if new:
+            self.start_button.pack(side="right")
+        else:
+            self.start_button.pack_forget()
         self.start_button.configure(state="normal" if new else "disabled")
         self.browse.configure(state="normal" if new else "disabled")
         self.folder_entry.configure(state="normal" if new else "disabled")
@@ -714,23 +740,26 @@ class Desk:
         self.diff.configure(state="normal" if self.job and not self.running else "disabled")
         self.reopen.configure(state="disabled" if self.running else "normal")
         self.new_button.configure(state="normal" if self.job and not self.running else "disabled")
-        if self.job or self.running:
-            self.task_actions.grid()
-            if not self.new_button.winfo_manager():
-                self.new_button.pack(side="right", padx=(0, 8))
-        else:
-            self.task_actions.grid_remove()
-            self.new_button.pack_forget()
+        self.pause.pack_forget()
+        self.resume.pack_forget()
+        if self.running:
+            self.pause.pack(side="right", padx=8)
+        elif resumable:
+            self.resume.pack(side="right", padx=8)
         delivered = self.job and (Path(self.job.path) / "project").is_dir()
         self.output.configure(state="normal" if delivered else "disabled")
 
     def _append(self, line):
+        first = not self.activity
         self.activity.append(str(line)[-4000:])
         self.feed.append(str(line))
+        if first:
+            self._task_layout()
 
     def _clear_log(self):
         self.activity.clear()
         self.feed.clear()
+        self._task_layout()
 
     def bridge(self):
         if self._bridge is None:
